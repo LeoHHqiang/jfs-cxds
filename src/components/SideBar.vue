@@ -32,10 +32,10 @@
           <transition name="dropdown">
             <ul v-show="isDropdownOpen && activeMenu === item.path" class="dropdown-menu">
               <li
-                v-for="subItem in acceptSubmenuItems"
+                v-for="subItem in item.submenuItems || []"
                 :key="subItem.key"
-                :class="['dropdown-item', { active: activeSubmenu === subItem.key }]"
-                @click="handleSubmenuClick(subItem)"
+                :class="['dropdown-item', { active: activeSubmenuState === subItem.key }]"
+                @click="handleSubmenuClick(item.path, subItem)"
               >
                 <i class="submenu-icon fas fa-circle"></i>
                 <span class="submenu-text">{{ subItem.label }}</span>
@@ -50,12 +50,16 @@
 
 <script setup>
 /* eslint-disable */
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 const props = defineProps({
   activeMenu: {
     type: String,
     default: 'home'
+  },
+  activeSubmenu: {
+    type: String,
+    default: ''
   }
 })
 
@@ -63,31 +67,46 @@ const emit = defineEmits(['menu-change', 'submenu-change'])
 
 // 状态管理
 const isDropdownOpen = ref(false)
-const activeSubmenu = ref('')
+const activeSubmenuState = ref('')
 
 const menuItems = [
   { name: '首页', path: 'home', icon: 'fas fa-home' },
-  { name: '验收管理', path: 'accept-approve', icon: 'fas fa-clipboard-check', hasDropdown: true },
-  { name: '移模审批', path: 'move-approve', icon: 'fas fa-exchange-alt' },
+  {
+    name: '验收管理',
+    path: 'accept-approve',
+    icon: 'fas fa-clipboard-check',
+    hasDropdown: true,
+    submenuItems: [
+      { key: 'create', label: '新建验收管理' },
+      { key: 'base', label: '基础项录入' },
+      { key: 'delivery', label: '交付追踪' },
+      { key: 'accept', label: '验收项录入' }
+    ]
+  },
+  {
+    name: '移模管理',
+    path: 'move-approve',
+    icon: 'fas fa-exchange-alt',
+    hasDropdown: true,
+    submenuItems: [
+      { key: 'move-approval', label: '移模审批' },
+      { key: 'move-apply', label: '移模申请' }
+    ]
+  },
   { name: '模板管理', path: 'template', icon: 'fas fa-cube' },
   { name: '历史验收', path: 'accept-history', icon: 'fas fa-history' },
   { name: '操作记录', path: 'record', icon: 'fas fa-clipboard-list' },
   { name: '供应商管理', path: 'supplier', icon: 'fas fa-truck' }
 ]
 
-const acceptSubmenuItems = [
-  { key: 'create', label: '新建验收管理' },
-  { key: 'base', label: '基础项录入' },
-  { key: 'delivery', label: '交付追踪' },
-  { key: 'accept', label: '验收项录入' }
-]
+const dropdownMenuPaths = menuItems.filter(item => item.hasDropdown).map(item => item.path)
 
 // 处理主菜单点击
 const handleMenuClick = (path) => {
   emit('menu-change', path)
   // 关闭下拉菜单
   isDropdownOpen.value = false
-  activeSubmenu.value = ''
+  activeSubmenuState.value = ''
 }
 
 // 切换下拉菜单
@@ -95,7 +114,7 @@ const toggleDropdown = (path) => {
   if (props.activeMenu === path && isDropdownOpen.value) {
     // 如果当前已经是打开状态，点击时关闭
     isDropdownOpen.value = false
-    activeSubmenu.value = ''
+    activeSubmenuState.value = ''
   } else {
     // 否则打开下拉菜单并激活主菜单
     emit('menu-change', path)
@@ -104,14 +123,30 @@ const toggleDropdown = (path) => {
 }
 
 // 处理子菜单点击
-const handleSubmenuClick = (subItem) => {
-  activeSubmenu.value = subItem.key
+const handleSubmenuClick = (mainPath, subItem) => {
+  activeSubmenuState.value = subItem.key
   emit('submenu-change', {
-    mainMenu: 'accept-approve',
+    mainMenu: mainPath,
     subMenu: subItem.key,
     ...subItem
   })
 }
+
+watch(
+  () => props.activeMenu,
+  (menu) => {
+    isDropdownOpen.value = dropdownMenuPaths.includes(menu)
+  },
+  { immediate: true }
+)
+
+watch(
+  () => props.activeSubmenu,
+  (submenu) => {
+    activeSubmenuState.value = submenu || ''
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>

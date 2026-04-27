@@ -9,7 +9,7 @@
         <button class="btn btn-ghost" @click="onReset">重置</button>
       </div>
       <div class="toolbar-right">
-        <button class="btn btn-secondary" @click="onCreate">+ 新建验收模版</button>
+        <button class="btn btn-secondary" @click="openTemplateModal('create')">+ 新建验收模版</button>
       </div>
     </div>
 
@@ -22,7 +22,7 @@
           <span>创建时间：{{ tpl.createdAt }}</span>
         </div>
         <div class="card-actions">
-          <button class="btn-sm btn-outline" @click="onEdit(tpl)">编辑</button>
+          <button class="btn-sm btn-outline" @click="openTemplateModal('edit', tpl)">编辑</button>
           <button class="btn-sm btn-outline" @click="onDuplicate(tpl)">复用</button>
           <button class="btn-sm btn-danger" @click="requestDelete(tpl)">删除</button>
         </div>
@@ -64,6 +64,52 @@
         </div>
       </div>
     </div>
+
+    <div v-if="templateModal.visible" class="modal-mask" @click.self="closeTemplateModal">
+      <div class="modal editor-modal">
+        <div class="modal-header">
+          <span>{{ templateModal.title }}</span>
+          <button class="icon-btn" @click="closeTemplateModal">✕</button>
+        </div>
+        <div class="editor-body">
+          <div class="editor-top">
+            <label>模板名称：</label>
+            <input v-model="templateForm.name" placeholder="请输入" />
+          </div>
+          <table class="item-table">
+            <thead>
+              <tr>
+                <th>采集项名称</th>
+                <th>模板</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(item, idx) in templateForm.items" :key="item.id">
+                <td>
+                  <div class="item-cell">
+                    <span>{{ item.label }}</span>
+                    <button class="tiny-btn" @click="removeItem(idx)">⊖</button>
+                  </div>
+                </td>
+                <td>
+                  <div class="item-cell">
+                    <span>{{ item.fileName || '无' }}</span>
+                    <button class="tiny-btn" @click="assignDemoFile(idx)">⊕</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="editor-tools">
+            <button class="btn btn-ghost" @click="addItem">+ 新增采集项</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" @click="saveTemplate">保存</button>
+          <button class="btn" @click="closeTemplateModal">取消</button>
+        </div>
+      </div>
+    </div>
   </main>
   
 </template>
@@ -71,7 +117,7 @@
 <script setup>
 /* eslint-disable */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { fetchTemplates, deleteTemplate, duplicateTemplate } from '@/api'
+import { fetchTemplateList, removeTemplate, saveTemplateData } from '@/api'
 
 const props = defineProps({
   pageName: { type: String, default: '模板管理' }
@@ -96,28 +142,32 @@ const pagedTemplates = computed(() => {
   return allTemplates.value.slice(start, start + size.value)
 })
 const jumpTo = ref()
+const templateModal = reactive({
+  visible: false,
+  mode: 'create',
+  title: '新建验收模板',
+  targetId: ''
+})
+const defaultItems = [
+  { id: 'i1', label: '验收报告', fileName: '' },
+  { id: 'i2', label: '材质证明', fileName: '' },
+  { id: 'i3', label: '上模图片', fileName: '' },
+  { id: 'i4', label: '下模图片', fileName: '' },
+  { id: 'i5', label: '实物整体图片', fileName: '' },
+  { id: 'i6', label: '实物铭牌图片', fileName: '' }
+]
+const templateForm = reactive({
+  name: '',
+  items: []
+})
 
 const loadData = async () => {
-  // 预留：尝试拉取后端数据
-  const res = await fetchTemplates({ creator: filters.creator, page: 1, size: 999 })
-  if (res && res.data && Array.isArray(res.data.list)) {
-    allTemplates.value = res.data.list
-    total.value = Number(res.data.total || res.data.list.length)
-  } else {
-    // 本地演示数据
-    allTemplates.value = [
-      { id: 't1', name: '吉利1', creator: '张三', createdAt: '2025.01.01' },
-      { id: 't2', name: '吉利2', creator: '李四', createdAt: '2025.01.01' },
-      { id: 't3', name: '理想1', creator: '王五', createdAt: '2025.01.01' },
-      { id: 't4', name: '理想2', creator: '赵六', createdAt: '2025.01.01' },
-      { id: 't5', name: '宝马1', creator: '张三', createdAt: '2025.01.01' },
-      { id: 't6', name: '宝马2', creator: '张三', createdAt: '2025.01.01' },
-      { id: 't7', name: '比亚迪1', creator: '周七', createdAt: '2025.01.01' },
-      { id: 't8', name: '比亚迪2', creator: '周七', createdAt: '2025.01.01' },
-      { id: 't9', name: '特斯拉1', creator: '钱八', createdAt: '2025.01.01' },
-      { id: 't10', name: '特斯拉2', creator: '钱八', createdAt: '2025.01.01' }
-    ]
-    total.value = allTemplates.value.length
+  try {
+    const res = await fetchTemplateList({ creator: filters.creator, page: 1, size: 999 })
+    allTemplates.value = res.list || []
+    total.value = res.total || allTemplates.value.length
+  } catch (error) {
+    console.error('加载模板列表失败:', error)
   }
 }
 
@@ -142,17 +192,8 @@ const goPage = (p) => {
   page.value = next
 }
 
-// 预留页面跳转（未有路由时仅提示，可在集成路由后替换为 router.push）
-const goToEditor = (mode, id) => {
-  // 示例：router.push({ name: 'TemplateEditor', query: { mode, id } })
-  window.alert(`跳转到模板编辑页：mode=${mode}${id ? ', id='+id : ''}`)
-}
-const onCreate = () => goToEditor('create')
-const onEdit = (tpl) => goToEditor('edit', tpl.id)
 const onDuplicate = async (tpl) => {
-  // 预留后端复用接口
-  await duplicateTemplate(tpl.id).catch(()=>{})
-  goToEditor('duplicate', tpl.id)
+  openTemplateModal('duplicate', tpl)
 }
 
 // 删除确认弹窗
@@ -162,11 +203,61 @@ const closeConfirm = () => { confirm.visible = false; confirm.target = null }
 const confirmDelete = async () => {
   const tpl = confirm.target
   if (!tpl) return closeConfirm()
-  await deleteTemplate(tpl.id).catch(()=>{})
+  await removeTemplate(tpl.id).catch(()=>{})
   allTemplates.value = allTemplates.value.filter(t => t.id !== tpl.id)
   total.value = allTemplates.value.length
   if (page.value > totalPages.value) page.value = totalPages.value
   closeConfirm()
+}
+
+const openTemplateModal = (mode, tpl) => {
+  templateModal.visible = true
+  templateModal.mode = mode
+  templateModal.targetId = tpl?.id || ''
+  templateModal.title = mode === 'edit' ? '编辑验收模板' : mode === 'duplicate' ? '复用验收模板' : '新建验收模板'
+  templateForm.name = mode === 'duplicate' ? `${tpl?.name || ''}-副本` : tpl?.name || ''
+  templateForm.items = JSON.parse(JSON.stringify(defaultItems))
+}
+
+const closeTemplateModal = () => {
+  templateModal.visible = false
+}
+
+const addItem = () => {
+  templateForm.items.push({
+    id: `i-${Date.now()}`,
+    label: `采集项${templateForm.items.length + 1}`,
+    fileName: ''
+  })
+}
+
+const removeItem = (idx) => {
+  if (templateForm.items.length <= 1) return
+  templateForm.items.splice(idx, 1)
+}
+
+const assignDemoFile = (idx) => {
+  templateForm.items[idx].fileName = `验收报告模板${idx + 1}.pdf`
+}
+
+const saveTemplate = async () => {
+  if (!templateForm.name.trim()) return
+  const payload = {
+    id: templateModal.mode === 'edit' ? templateModal.targetId : undefined,
+    name: templateForm.name,
+    creator: '当前用户',
+    createdAt: '2026-04-27',
+    items: templateForm.items
+  }
+  const saved = await saveTemplateData(payload)
+  if (templateModal.mode === 'create' || templateModal.mode === 'duplicate') {
+    allTemplates.value.unshift(saved)
+    total.value = allTemplates.value.length
+  } else if (templateModal.mode === 'edit' && templateModal.targetId) {
+    const idx = allTemplates.value.findIndex((t) => String(t.id) === String(templateModal.targetId))
+    if (idx !== -1) allTemplates.value[idx] = saved
+  }
+  closeTemplateModal()
 }
 
 onMounted(loadData)
@@ -212,6 +303,17 @@ onMounted(loadData)
 .modal-text .desc { color: #606266; }
 .modal-text .link { color: #2f6bff; }
 .modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px 24px; }
+.editor-modal { width: min(760px, 92vw); }
+.editor-body { padding: 16px 20px; }
+.editor-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.editor-top label { width: 80px; color: #606266; }
+.editor-top input { flex: 1; height: 34px; border: 1px solid #dcdfe6; border-radius: 6px; padding: 0 10px; }
+.item-table { width: 100%; border-collapse: collapse; }
+.item-table th, .item-table td { border-bottom: 1px solid #edf1f6; padding: 8px; text-align: left; }
+.item-table th { background: #f3f7ff; }
+.item-cell { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tiny-btn { border: 1px solid #a9c2ff; color: #2f6bff; background: #fff; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; }
+.editor-tools { margin-top: 10px; }
 
 @media (max-width: 1200px) { .grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }

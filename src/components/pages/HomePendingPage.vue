@@ -1,7 +1,7 @@
 <template>
   <section class="pending-page">
-    <h3>移模管理待定</h3>
-    <p>原“移模审批”主页面已调整为“移模管理”容器页，后续内容待定。</p>
+    <h3>首页待定</h3>
+    <p>首页内容正在规划中，请先使用左侧业务菜单进入对应模块。</p>
   </section>
 </template>
 
@@ -28,5 +28,3 @@ p {
   font-size: 14px;
 }
 </style>
-
-

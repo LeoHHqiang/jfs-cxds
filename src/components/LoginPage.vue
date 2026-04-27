@@ -95,9 +95,7 @@ const isLoading = ref(false)
 
 // 模拟的账号数据库
 const validAccounts = [
-  { username: 'admin', password: 'admin123' },
-  { username: 'user', password: 'user123' },
-  { username: 'test', password: 'test123' }
+  { username: '123', password: '123' }
 ]
 
 // 检查是否有保存的登录信息
