@@ -1,4 +1,5 @@
 import { hasSupabaseEnv, supabase } from '@/lib/supabase'
+import { loadDb, mutateDb, nextId } from './mockDb'
 
 function withErrorScope(scope, error) {
   console.error(`[demoApi:${scope}]`, error)
@@ -8,25 +9,6 @@ function withErrorScope(scope, error) {
 function nowDateText() {
   return new Date().toISOString().slice(0, 16).replace('T', ' ')
 }
-
-const fallbackDeliveryRows = [
-  { id: 1, partName: '副驾驶座椅总成', partNo: '6608347607', childName: '副驾驶安全带盖板1', childNo: '6608347607', toolName: '副驾驶安全带盖板具A1', toolType: '工装分类', realToolNo: 'GDZR201511026183', supplier: '维诗恩塑胶有限公司' },
-  { id: 2, partName: '副驾驶座椅总成', partNo: '6608347608', childName: '副驾驶安全带盖板2', childNo: '6608347608', toolName: '副驾驶安全带盖板具A2', toolType: '工装分类', realToolNo: 'GDZR201511026184', supplier: '鸿瑞兴模具有限公司' }
-]
-
-const fallbackAcceptRows = [
-  { id: 1, partName: '副驾驶座椅总成', partNo: '6608347607', childName: '副驾驶安全带盖板', childNo: '6608347607', toolName: '副驾驶安全带盖板检具A1', toolType: '其他模具', realToolNo: 'GZDR202508013085', supplier: '维诗恩塑胶有限公司' },
-  { id: 2, partName: '仪表盘总成', partNo: '7709123001', childName: '中控饰板', childNo: '7709123001', toolName: '中控饰板检具B1', toolType: '注塑模具', realToolNo: 'REAL202500001', supplier: '鸿瑞兴模具有限公司' }
-]
-
-const fallbackTemplates = [
-  { id: 1, name: '吉利1', creator: '张三', createdAt: '2025.01.01', items: [] },
-  { id: 2, name: '理想1', creator: '李四', createdAt: '2025.01.01', items: [] }
-]
-
-const fallbackProjects = [
-  { id: 1, code: 'CM2E', owner: '李新宇', updatedAt: '2024-01-12 12:22', progressIndex: 2, stages: [] }
-]
 
 function mapDeliveryFromDb(row) {
   return {
@@ -110,7 +92,11 @@ function mapProjectFromDb(row) {
 }
 
 export async function getDeliveryItems(filters = {}) {
-  if (!hasSupabaseEnv || !supabase) return { list: fallbackDeliveryRows, total: fallbackDeliveryRows.length }
+  if (!hasSupabaseEnv || !supabase) {
+    const db = loadDb()
+    const list = [...(db.deliveryItems || [])]
+    return { list, total: list.length }
+  }
   try {
     let query = supabase.from('delivery_items').select('*', { count: 'exact' }).order('id', { ascending: false })
     if (filters.partName) query = query.ilike('part_name', `%${filters.partName}%`)
@@ -125,7 +111,14 @@ export async function getDeliveryItems(filters = {}) {
 }
 
 export async function deleteDeliveryItems(ids = []) {
-  if (!ids.length || !hasSupabaseEnv || !supabase) return
+  if (!ids.length) return
+  if (!hasSupabaseEnv || !supabase) {
+    mutateDb((db) => {
+      db.deliveryItems = (db.deliveryItems || []).filter((item) => !ids.includes(item.id))
+      return db
+    })
+    return
+  }
   try {
     const { error } = await supabase.from('delivery_items').delete().in('id', ids)
     if (error) throw error
@@ -135,7 +128,15 @@ export async function deleteDeliveryItems(ids = []) {
 }
 
 export async function createDeliveryItem(payload) {
-  if (!hasSupabaseEnv || !supabase) return { id: Date.now(), ...payload }
+  if (!hasSupabaseEnv || !supabase) {
+    let saved = null
+    mutateDb((db) => {
+      saved = { id: nextId(db.deliveryItems || []), ...payload }
+      db.deliveryItems = [saved, ...(db.deliveryItems || [])]
+      return db
+    })
+    return saved
+  }
   try {
     const { data, error } = await supabase.from('delivery_items').insert([mapDeliveryToDb(payload)]).select('*').single()
     if (error) throw error
@@ -146,7 +147,11 @@ export async function createDeliveryItem(payload) {
 }
 
 export async function getAcceptItems(filters = {}) {
-  if (!hasSupabaseEnv || !supabase) return { list: fallbackAcceptRows, total: fallbackAcceptRows.length }
+  if (!hasSupabaseEnv || !supabase) {
+    const db = loadDb()
+    const list = [...(db.acceptItems || [])]
+    return { list, total: list.length }
+  }
   try {
     let query = supabase.from('accept_items').select('*', { count: 'exact' }).order('id', { ascending: false })
     if (filters.partName) query = query.ilike('part_name', `%${filters.partName}%`)
@@ -160,7 +165,15 @@ export async function getAcceptItems(filters = {}) {
 }
 
 export async function createAcceptItem(payload) {
-  if (!hasSupabaseEnv || !supabase) return { id: Date.now(), ...payload }
+  if (!hasSupabaseEnv || !supabase) {
+    let saved = null
+    mutateDb((db) => {
+      saved = { id: nextId(db.acceptItems || []), ...payload }
+      db.acceptItems = [saved, ...(db.acceptItems || [])]
+      return db
+    })
+    return saved
+  }
   try {
     const { data, error } = await supabase.from('accept_items').insert([mapAcceptToDb(payload)]).select('*').single()
     if (error) throw error
@@ -171,7 +184,18 @@ export async function createAcceptItem(payload) {
 }
 
 export async function updateAcceptItem(id, payload) {
-  if (!hasSupabaseEnv || !supabase) return { id, ...payload }
+  if (!hasSupabaseEnv || !supabase) {
+    let saved = null
+    mutateDb((db) => {
+      db.acceptItems = (db.acceptItems || []).map((item) => {
+        if (item.id !== id) return item
+        saved = { ...item, ...payload, id }
+        return saved
+      })
+      return db
+    })
+    return saved || { id, ...payload }
+  }
   try {
     const { data, error } = await supabase.from('accept_items').update(mapAcceptToDb(payload)).eq('id', id).select('*').single()
     if (error) throw error
@@ -182,7 +206,14 @@ export async function updateAcceptItem(id, payload) {
 }
 
 export async function deleteAcceptItems(ids = []) {
-  if (!ids.length || !hasSupabaseEnv || !supabase) return
+  if (!ids.length) return
+  if (!hasSupabaseEnv || !supabase) {
+    mutateDb((db) => {
+      db.acceptItems = (db.acceptItems || []).filter((item) => !ids.includes(item.id))
+      return db
+    })
+    return
+  }
   try {
     const { error } = await supabase.from('accept_items').delete().in('id', ids)
     if (error) throw error
@@ -192,7 +223,12 @@ export async function deleteAcceptItems(ids = []) {
 }
 
 export async function fetchTemplateList(params = {}) {
-  if (!hasSupabaseEnv || !supabase) return { list: fallbackTemplates, total: fallbackTemplates.length }
+  if (!hasSupabaseEnv || !supabase) {
+    const db = loadDb()
+    let list = [...(db.templates || [])]
+    if (params.creator) list = list.filter((item) => String(item.creator || '').includes(params.creator))
+    return { list, total: list.length }
+  }
   try {
     let query = supabase.from('templates').select('*', { count: 'exact' }).order('id', { ascending: false })
     if (params.creator) query = query.ilike('creator', `%${params.creator}%`)
@@ -205,7 +241,29 @@ export async function fetchTemplateList(params = {}) {
 }
 
 export async function saveTemplateData(payload) {
-  if (!hasSupabaseEnv || !supabase) return { id: Date.now(), ...payload }
+  if (!hasSupabaseEnv || !supabase) {
+    let saved = null
+    mutateDb((db) => {
+      if (payload.id) {
+        db.templates = (db.templates || []).map((item) => {
+          if (item.id !== payload.id) return item
+          saved = { ...item, ...payload }
+          return saved
+        })
+      } else {
+        saved = {
+          id: nextId(db.templates || []),
+          name: payload.name,
+          creator: payload.creator || '当前用户',
+          createdAt: payload.createdAt || new Date().toISOString().slice(0, 10),
+          items: payload.items || []
+        }
+        db.templates = [saved, ...(db.templates || [])]
+      }
+      return db
+    })
+    return saved
+  }
   try {
     const body = {
       name: payload.name,
@@ -227,7 +285,13 @@ export async function saveTemplateData(payload) {
 }
 
 export async function removeTemplate(id) {
-  if (!hasSupabaseEnv || !supabase) return
+  if (!hasSupabaseEnv || !supabase) {
+    mutateDb((db) => {
+      db.templates = (db.templates || []).filter((item) => item.id !== id)
+      return db
+    })
+    return
+  }
   try {
     const { error } = await supabase.from('templates').delete().eq('id', id)
     if (error) throw error
@@ -237,7 +301,11 @@ export async function removeTemplate(id) {
 }
 
 export async function getProjects() {
-  if (!hasSupabaseEnv || !supabase) return { list: fallbackProjects, total: fallbackProjects.length }
+  if (!hasSupabaseEnv || !supabase) {
+    const db = loadDb()
+    const list = [...(db.projects || [])]
+    return { list, total: list.length }
+  }
   try {
     const { data, count, error } = await supabase.from('projects').select('*', { count: 'exact' }).order('id', { ascending: false })
     if (error) throw error
@@ -248,7 +316,22 @@ export async function getProjects() {
 }
 
 export async function createProject(payload) {
-  if (!hasSupabaseEnv || !supabase) return { id: Date.now(), ...payload }
+  if (!hasSupabaseEnv || !supabase) {
+    let saved = null
+    mutateDb((db) => {
+      saved = {
+        id: nextId(db.projects || []),
+        code: payload.code || '',
+        owner: payload.owner || '',
+        updatedAt: nowDateText(),
+        progressIndex: payload.progressIndex || 0,
+        stages: payload.stages || []
+      }
+      db.projects = [saved, ...(db.projects || [])]
+      return db
+    })
+    return saved
+  }
   try {
     const { data, error } = await supabase.from('projects').insert([{
       code: payload.code || '',

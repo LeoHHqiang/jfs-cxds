@@ -1,12 +1,7 @@
 import { hasSupabaseEnv, supabase } from '@/lib/supabase'
+import { loadDb, mutateDb, nextId } from './mockDb'
 
 const tableName = 'base_items'
-
-const fallbackRows = [
-  { id: 1, partName: '副驾驶座椅总成', partNo: '6608347607', childName: '副驾驶安全带盖板1', childNo: '6608347607', toolName: '副驾驶安全带盖板检具A1', toolType: '注塑模具', vendorToolNo: 'GP1002012', customerToolNo: 'GDZR201511026183' },
-  { id: 2, partName: '副驾驶座椅总成', partNo: '6608347607', childName: '副驾驶安全带盖板2', childNo: '6608347607', toolName: '副驾驶安全带盖板检具A2', toolType: '注塑模具', vendorToolNo: 'GP1002013', customerToolNo: 'GDZR201511026184' },
-  { id: 3, partName: '副驾驶座椅总成', partNo: '6608347607', childName: '副驾驶安全带盖板3', childNo: '6608347607', toolName: '副驾驶安全带盖板检具A3', toolType: '注塑模具', vendorToolNo: 'GP1002014', customerToolNo: 'GDZR201511026185' }
-]
 
 function toDto(row) {
   return {
@@ -47,7 +42,9 @@ function toPayload(row) {
 
 export async function getBaseItems(filters = {}) {
   if (!hasSupabaseEnv || !supabase) {
-    return { list: fallbackRows, total: fallbackRows.length }
+    const db = loadDb()
+    const list = [...(db.baseItems || [])]
+    return { list, total: list.length }
   }
 
   let query = supabase.from(tableName).select('*', { count: 'exact' }).order('id', { ascending: false })
@@ -66,7 +63,13 @@ export async function getBaseItems(filters = {}) {
 
 export async function createBaseItem(payload) {
   if (!hasSupabaseEnv || !supabase) {
-    return { id: Date.now(), ...payload }
+    let saved = null
+    mutateDb((db) => {
+      saved = { id: nextId(db.baseItems || []), ...payload }
+      db.baseItems = [saved, ...(db.baseItems || [])]
+      return db
+    })
+    return saved
   }
 
   const { data, error } = await supabase.from(tableName).insert([toPayload(payload)]).select('*').single()
@@ -76,7 +79,16 @@ export async function createBaseItem(payload) {
 
 export async function updateBaseItem(id, payload) {
   if (!hasSupabaseEnv || !supabase) {
-    return { id, ...payload }
+    let saved = null
+    mutateDb((db) => {
+      db.baseItems = (db.baseItems || []).map((item) => {
+        if (item.id !== id) return item
+        saved = { ...item, ...payload, id }
+        return saved
+      })
+      return db
+    })
+    return saved || { id, ...payload }
   }
 
   const { data, error } = await supabase.from(tableName).update(toPayload(payload)).eq('id', id).select('*').single()
@@ -85,14 +97,26 @@ export async function updateBaseItem(id, payload) {
 }
 
 export async function deleteBaseItem(id) {
-  if (!hasSupabaseEnv || !supabase) return
+  if (!hasSupabaseEnv || !supabase) {
+    mutateDb((db) => {
+      db.baseItems = (db.baseItems || []).filter((item) => item.id !== id)
+      return db
+    })
+    return
+  }
   const { error } = await supabase.from(tableName).delete().eq('id', id)
   if (error) throw error
 }
 
 export async function batchDeleteBaseItems(ids = []) {
   if (!ids.length) return
-  if (!hasSupabaseEnv || !supabase) return
+  if (!hasSupabaseEnv || !supabase) {
+    mutateDb((db) => {
+      db.baseItems = (db.baseItems || []).filter((item) => !ids.includes(item.id))
+      return db
+    })
+    return
+  }
   const { error } = await supabase.from(tableName).delete().in('id', ids)
   if (error) throw error
 }

@@ -1,9 +1,13 @@
 <template>
   <div class="login-wrapper">
+    <div class="mold-decor mold-left-top"></div>
+    <div class="mold-decor mold-left-bottom"></div>
+    <div class="mold-decor mold-right-top"></div>
+    <div class="mold-decor mold-right-bottom"></div>
     <div class="login-container">
       <div class="login-header">
-        <h1>欢迎登录</h1>
-        <p>请输入您的账号和密码</p>
+        <h1>{{ isRegisterMode ? '账号注册' : '欢迎登录' }}</h1>
+        <p>{{ isRegisterMode ? '请设置账号和密码（账号需字母+数字）' : '请输入您的账号和密码' }}</p>
       </div>
       
       <form class="login-form" @submit.prevent="handleSubmit">
@@ -13,7 +17,7 @@
             type="text" 
             id="username" 
             class="form-control" 
-            placeholder="请输入用户名或邮箱"
+            placeholder="请输入账号（字母+数字）"
             v-model="username"
             @input="clearError('usernameError')"
           >
@@ -36,19 +40,35 @@
             {{ passwordError }}
           </div>
         </div>
+
+        <div v-if="isRegisterMode" class="form-group">
+          <label for="confirmPassword">确认密码</label>
+          <input
+            type="password"
+            id="confirmPassword"
+            class="form-control"
+            placeholder="请再次输入密码"
+            v-model="confirmPassword"
+            @input="clearError('confirmPasswordError')"
+          >
+          <div class="error-message" :style="{ display: confirmPasswordError ? 'block' : 'none' }">
+            {{ confirmPasswordError }}
+          </div>
+        </div>
         
         <div class="remember-forgot">
           <div class="remember-me">
             <input type="checkbox" id="rememberMe" v-model="rememberMe">
             <label for="rememberMe">记住密码</label>
           </div>
-          <a href="#" class="forgot-password" @click.prevent>忘记密码?</a>
+          <span class="forgot-password disabled">忘记密码暂未开放</span>
         </div>
         
-        <button type="submit" class="login-btn">登录</button>
+        <button type="submit" class="login-btn">{{ isRegisterMode ? '注册' : '登录' }}</button>
         
         <div class="signup-link">
-          没有账号? <a href="#" @click.prevent>立即注册</a>
+          {{ isRegisterMode ? '已有账号?' : '没有账号?' }}
+          <a href="#" @click.prevent="toggleMode">{{ isRegisterMode ? '返回登录' : '立即注册' }}</a>
         </div>
       </form>
     </div>
@@ -79,24 +99,23 @@
 <script setup>
 /* eslint-disable */
 import { ref, onMounted } from 'vue'
-// TODO: 当后端接口准备好后，取消下面的注释
-// import { login, handleApiError } from '@/api/user'
+import { login, register } from '@/api'
 
 const emit = defineEmits(['login-success'])
 
 const username = ref('')
 const password = ref('')
+const confirmPassword = ref('')
 const rememberMe = ref(false)
 const usernameError = ref('')
 const passwordError = ref('')
+const confirmPasswordError = ref('')
 const showAlert = ref(false)
 const alertMessage = ref('')
 const isLoading = ref(false)
+const isRegisterMode = ref(false)
 
-// 模拟的账号数据库
-const validAccounts = [
-  { username: '123', password: '123' }
-]
+const ACCOUNT_PATTERN = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]+$/
 
 // 检查是否有保存的登录信息
 onMounted(() => {
@@ -114,19 +133,33 @@ const clearError = (errorType) => {
     usernameError.value = ''
   } else if (errorType === 'passwordError') {
     passwordError.value = ''
+  } else if (errorType === 'confirmPasswordError') {
+    confirmPasswordError.value = ''
   }
 }
 
-const handleSubmit = () => {
+const toggleMode = () => {
+  isRegisterMode.value = !isRegisterMode.value
+  usernameError.value = ''
+  passwordError.value = ''
+  confirmPasswordError.value = ''
+}
+
+const handleSubmit = async () => {
   // 重置错误信息
   usernameError.value = ''
   passwordError.value = ''
+  confirmPasswordError.value = ''
   
   // 验证输入
   let isValid = true
   
-  if (username.value.trim() === '') {
+  const account = username.value.trim()
+  if (account === '') {
     usernameError.value = '请输入账号'
+    isValid = false
+  } else if (!ACCOUNT_PATTERN.test(account)) {
+    usernameError.value = '账号必须为字母+数字'
     isValid = false
   }
   
@@ -134,24 +167,31 @@ const handleSubmit = () => {
     passwordError.value = '请输入密码'
     isValid = false
   }
+
+  if (isRegisterMode.value) {
+    if (password.value.length < 6) {
+      passwordError.value = '密码至少 6 位'
+      isValid = false
+    }
+    if (confirmPassword.value !== password.value) {
+      confirmPasswordError.value = '两次密码不一致'
+      isValid = false
+    }
+  }
   
   if (!isValid) {
     return
   }
   
-  // 查找账号是否存在
-  const account = validAccounts.find(acc => acc.username === username.value.trim())
-  
-  if (!account) {
-    // 账号不存在
-    showAlertMessage('账号不存在，请检查输入')
-    return
-  }
-  
-  // 检查密码是否正确
-  if (account.password !== password.value) {
-    // 密码错误
-    showAlertMessage('密码错误，请重新输入')
+  if (isRegisterMode.value) {
+    const registerResult = await register({ account, password: password.value })
+    if (!registerResult.success) {
+      showAlertMessage(registerResult.message || '注册失败')
+      return
+    }
+    showAlertMessage('注册成功，请使用新账号登录')
+    isRegisterMode.value = false
+    confirmPassword.value = ''
     return
   }
   
@@ -166,52 +206,15 @@ const handleSubmit = () => {
     localStorage.removeItem('savedPassword')
   }
   
-  // 显示加载提示
+  const loginResult = await login({ account, password: password.value })
+  if (!loginResult.success) {
+    showAlertMessage(loginResult.message || '登录失败')
+    return
+  }
   isLoading.value = true
-  
-  /* 
-   * TODO: 当后端接口准备好后，可以使用以下代码进行真实的 API 调用
-   * 
-   * try {
-   *   const result = await login({
-   *     username: username.value.trim(),
-   *     password: password.value
-   *   })
-   *   
-   *   if (result.success) {
-   *     // 保存 token
-   *     localStorage.setItem('token', result.data.token)
-   *     // 保存用户信息
-   *     localStorage.setItem('userInfo', JSON.stringify(result.data))
-   *     
-   *     // 触发登录成功事件，传递完整的用户信息
-   *     emit('login-success', {
-   *       username: result.data.username,
-   *       name: result.data.name,
-   *       email: result.data.email,
-   *       avatar: result.data.avatar,
-   *       role: result.data.role,
-   *       token: result.data.token
-   *     })
-   *   }
-   * } catch (error) {
-   *   isLoading.value = false
-   *   handleApiError(error)
-   *   showAlertMessage(error.message || '登录失败，请稍后重试')
-   * }
-   */
-  
-  // 当前使用模拟登录，延时800ms后触发登录成功事件
   setTimeout(() => {
-    emit('login-success', {
-      username: username.value.trim(),
-      // 这里预留更多用户信息字段，等待后端接口对接
-      // name: account.name,
-      // email: account.email,
-      // avatar: account.avatar,
-      // role: account.role
-    })
-  }, 800)
+    emit('login-success', loginResult.data)
+  }, 600)
 }
 
 const showAlertMessage = (message) => {
@@ -234,23 +237,27 @@ const closeAlert = () => {
   display: flex;
   justify-content: center;
   align-items: center;
-  background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+  background: radial-gradient(circle at 25% 22%, #eef7ff 0%, #d9ecff 34%, #b8d8ff 100%);
   padding: 20px;
+  overflow: hidden;
 }
 
 .login-container {
+  position: relative;
+  z-index: 3;
   width: 100%;
-  max-width: 400px;
-  background-color: white;
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  max-width: 430px;
+  background-color: #ffffff;
+  border-radius: 14px;
+  border: 1px solid rgba(156, 199, 244, 0.55);
+  box-shadow: 0 20px 36px rgba(70, 130, 193, 0.2);
   overflow: hidden;
 }
 
 .login-header {
-  background: linear-gradient(to right, #6a11cb, #2575fc);
+  background: linear-gradient(90deg, #7cbcf5, #9dd9ff);
   color: white;
-  padding: 25px 20px;
+  padding: 24px 20px;
   text-align: center;
 }
 
@@ -261,7 +268,7 @@ const closeAlert = () => {
 }
 
 .login-header p {
-  opacity: 0.9;
+  opacity: 0.95;
   font-size: 14px;
 }
 
@@ -278,22 +285,24 @@ const closeAlert = () => {
   display: block;
   margin-bottom: 8px;
   font-weight: 500;
-  color: #333;
+  color: #455466;
   font-size: 14px;
 }
 
 .form-control {
   width: 100%;
   padding: 12px 15px;
-  border: 1px solid #ddd;
+  border: 1px solid #c7d8ec;
   border-radius: 6px;
   font-size: 15px;
-  transition: all 0.3s;
+  transition: all 0.25s;
+  background: #fbfdff;
+  color: #334155;
 }
 
 .form-control:focus {
-  border-color: #6a11cb;
-  box-shadow: 0 0 0 2px rgba(106, 17, 203, 0.2);
+  border-color: #6aaef4;
+  box-shadow: 0 0 0 2px rgba(106, 174, 244, 0.22);
   outline: none;
 }
 
@@ -315,7 +324,7 @@ const closeAlert = () => {
 }
 
 .forgot-password {
-  color: #6a11cb;
+  color: #4f8fcd;
   text-decoration: none;
 }
 
@@ -323,10 +332,16 @@ const closeAlert = () => {
   text-decoration: underline;
 }
 
+.forgot-password.disabled {
+  color: #9aa8b8;
+  cursor: not-allowed;
+  text-decoration: none;
+}
+
 .login-btn {
   width: 100%;
   padding: 12px;
-  background: linear-gradient(to right, #6a11cb, #2575fc);
+  background: linear-gradient(to right, #7ebef6, #98d6ff);
   color: white;
   border: none;
   border-radius: 6px;
@@ -338,7 +353,7 @@ const closeAlert = () => {
 
 .login-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(106, 17, 203, 0.4);
+  box-shadow: 0 7px 18px rgba(85, 157, 224, 0.35);
 }
 
 .error-message {
@@ -354,7 +369,7 @@ const closeAlert = () => {
 }
 
 .signup-link a {
-  color: #6a11cb;
+  color: #4f8fcd;
   text-decoration: none;
   font-weight: 500;
 }
@@ -416,7 +431,7 @@ const closeAlert = () => {
 }
 
 .alert-btn {
-  background: linear-gradient(to right, #6a11cb, #2575fc);
+  background: linear-gradient(to right, #7ebef6, #98d6ff);
   color: white;
   border: none;
   border-radius: 6px;
@@ -429,7 +444,7 @@ const closeAlert = () => {
 
 .alert-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(106, 17, 203, 0.4);
+  box-shadow: 0 5px 15px rgba(85, 157, 224, 0.35);
 }
 
 /* 登录成功加载提示样式 */
@@ -494,6 +509,109 @@ const closeAlert = () => {
   font-weight: 500;
 }
 
+.mold-decor {
+  position: absolute;
+  border-radius: 999px;
+  background: linear-gradient(145deg, rgba(231, 243, 255, 0.9), rgba(167, 207, 244, 0.7));
+  box-shadow: inset -10px -10px 22px rgba(255, 255, 255, 0.7), inset 10px 10px 24px rgba(123, 170, 216, 0.3), 0 12px 30px rgba(104, 154, 205, 0.22);
+}
+
+.mold-decor::before,
+.mold-decor::after {
+  content: '';
+  position: absolute;
+  border-radius: 999px;
+  border: 10px solid rgba(214, 235, 255, 0.92);
+  box-shadow: inset -4px -4px 10px rgba(255, 255, 255, 0.75), inset 3px 3px 8px rgba(111, 160, 209, 0.18);
+}
+
+.mold-left-top {
+  width: 240px;
+  height: 150px;
+  top: 34px;
+  left: -76px;
+  transform: rotate(-18deg);
+}
+
+.mold-left-top::before {
+  width: 54px;
+  height: 54px;
+  right: 28px;
+  top: 18px;
+}
+
+.mold-left-top::after {
+  width: 44px;
+  height: 44px;
+  right: 88px;
+  top: 72px;
+}
+
+.mold-left-bottom {
+  width: 248px;
+  height: 160px;
+  bottom: 38px;
+  left: -92px;
+  transform: rotate(18deg);
+}
+
+.mold-left-bottom::before {
+  width: 48px;
+  height: 48px;
+  left: 30px;
+  top: 20px;
+}
+
+.mold-left-bottom::after {
+  width: 64px;
+  height: 64px;
+  left: 118px;
+  bottom: 16px;
+}
+
+.mold-right-top {
+  width: 260px;
+  height: 156px;
+  top: 64px;
+  right: -92px;
+  transform: rotate(20deg);
+}
+
+.mold-right-top::before {
+  width: 58px;
+  height: 58px;
+  left: 24px;
+  top: 22px;
+}
+
+.mold-right-top::after {
+  width: 44px;
+  height: 44px;
+  left: 94px;
+  top: 84px;
+}
+
+.mold-right-bottom {
+  width: 316px;
+  height: 200px;
+  right: -136px;
+  bottom: -46px;
+}
+
+.mold-right-bottom::before {
+  width: 120px;
+  height: 120px;
+  left: 34px;
+  top: 26px;
+}
+
+.mold-right-bottom::after {
+  width: 56px;
+  height: 56px;
+  left: 168px;
+  top: 90px;
+}
+
 @media (max-width: 480px) {
   .login-container {
     max-width: 100%;
@@ -506,6 +624,10 @@ const closeAlert = () => {
   .alert-box {
     min-width: 280px;
     padding: 24px 30px;
+  }
+
+  .mold-decor {
+    display: none;
   }
 }
 </style>

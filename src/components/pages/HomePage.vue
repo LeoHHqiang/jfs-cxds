@@ -4,15 +4,15 @@
       <div class="toolbar-card">
         <div class="toolbar-actions">
           <button class="btn btn-primary" @click="openAcceptModal">+ 新建验收</button>
-          <button class="btn btn-purple">+ 新建验收快报</button>
-          <button class="btn btn-light">筛选</button>
+          <button class="btn btn-purple" @click="quickReport">+ 新建验收快报</button>
+          <button class="btn btn-light" @click="quickFilter">筛选</button>
         </div>
       </div>
 
       <div class="filter-card">
         <div class="filter-actions">
-          <button class="btn btn-primary small">查询</button>
-          <button class="btn btn-light small">重置</button>
+          <button class="btn btn-primary small" @click="quickFilter">查询</button>
+          <button class="btn btn-light small" @click="quickReset">重置</button>
         </div>
         <div class="filter-grid">
           <div class="filter-item">
@@ -219,7 +219,7 @@
 /* eslint-disable */
 import { computed, reactive, ref } from 'vue'
 import { onMounted } from 'vue'
-import { createProject, getProjects } from '@/api'
+import { createProject, fetchHomeMeta, getProjects } from '@/api'
 
 defineProps({
   pageName: {
@@ -245,17 +245,17 @@ const projects = ref([
   { code: 'D883', owner: '刘洋', updatedAt: '2024-01-20 14:41', progressIndex: 0, stages: projectStagesTemplate }
 ])
 
-const todos = [
+const todos = ref([
   { title: '资料上传', project: 'BWM', owner: '李新宇', theme: 'pink' },
   { title: '信息导入', project: 'L946', owner: '李新宇', theme: 'green' },
   { title: '编号核对', project: 'L946', owner: '李新宇', theme: 'purple' },
   { title: '交付追踪', project: 'BWM', owner: '李新宇', theme: 'blue' },
   { title: '模具交付建档', project: 'CM2E', owner: '李新宇', theme: 'yellow' }
-]
+])
 
 const weekDays = ['日', '一', '二', '三', '四', '五', '六']
 
-const eventData = {
+const eventData = ref({
   '2025-09-10': [
     { type: 'meeting', title: '团队会议', time: '10:00' },
     { type: 'task', title: '项目交付', time: '15:30' }
@@ -265,7 +265,7 @@ const eventData = {
     { type: 'presentation', title: '产品演示', time: '11:00' },
     { type: 'meeting', title: '客户会议', time: '16:00' }
   ]
-}
+})
 
 const eventTypeColors = {
   meeting: '#3498db',
@@ -333,7 +333,7 @@ const calendarDays = computed(() => {
       blank: false,
       dateStr,
       isToday,
-      events: eventData[dateStr] || []
+      events: eventData.value[dateStr] || []
     })
   }
 
@@ -422,8 +422,25 @@ function saveAcceptProject() {
   closeAcceptModal()
 }
 
+function quickReport() {
+  alert('已触发：新建验收快报')
+}
+
+function quickFilter() {
+  alert('已触发：查询/筛选')
+}
+
+function quickReset() {
+  alert('已触发：重置筛选')
+}
+
 onMounted(async () => {
   try {
+    const homeMeta = await fetchHomeMeta()
+    if (homeMeta.success) {
+      todos.value = homeMeta.data?.todos || todos.value
+      eventData.value = homeMeta.data?.events || eventData.value
+    }
     const res = await getProjects()
     if (res.list && res.list.length) {
       projects.value = res.list.map((item) => ({

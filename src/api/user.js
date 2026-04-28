@@ -1,163 +1,172 @@
-/**
- * 用户相关 API 接口
- * 为后端数据接口对接做准备
- */
+import { loadDb, mutateDb, nextId, paginate } from './mockDb'
 
-const API_BASE_URL = 'http://your-backend-api.com/api' // TODO: 修改为实际的后端API地址
+const ACCOUNT_PATTERN = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]+$/
 
-/**
- * 用户登录接口
- * @param {Object} loginData - 登录数据
- * @param {string} loginData.username - 用户名
- * @param {string} loginData.password - 密码
- * @returns {Promise<Object>} 返回用户信息
- * 
- * 示例：
- * {
- *   success: true,
- *   data: {
- *     username: 'admin',
- *     name: '管理员',
- *     email: 'admin@example.com',
- *     avatar: 'https://example.com/avatar.jpg',
- *     role: 'admin',
- *     token: 'xxx...'
- *   }
- * }
- */
-export const login = async (loginData) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(loginData)
-    })
-    
-    const result = await response.json()
-    return result
-  } catch (error) {
-    console.error('Login error:', error)
-    throw error
+function toSafeUser(user) {
+  return {
+    id: user.id,
+    username: user.account,
+    account: user.account,
+    role: user.role || 'user',
+    status: user.status || 'active',
+    name: user.profile?.displayName || user.account,
+    profile: user.profile || {},
+    settings: user.settings || {}
   }
 }
 
-/**
- * 用户退出登录接口
- * @param {string} token - 用户token
- * @returns {Promise<Object>} 
- */
-export const logout = async (token) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/auth/logout`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    return await response.json()
-  } catch (error) {
-    console.error('Logout error:', error)
-    throw error
+export const register = async ({ account, password }) => {
+  const normalized = (account || '').trim()
+  if (!normalized || !ACCOUNT_PATTERN.test(normalized)) {
+    return { success: false, message: '账号必须为字母+数字组合' }
   }
+  if (!password) {
+    return { success: false, message: '密码不能为空' }
+  }
+  const db = loadDb()
+  if (db.users.some((u) => u.account === normalized)) {
+    return { success: false, message: '账号已存在' }
+  }
+
+  mutateDb((draft) => {
+    draft.users.unshift({
+      id: nextId(draft.users),
+      account: normalized,
+      password,
+      role: 'user',
+      status: 'active',
+      profile: { displayName: normalized, phone: '', email: '' },
+      settings: { theme: 'light', language: 'zh-CN', notifyByEmail: true }
+    })
+    return draft
+  })
+  return { success: true, message: '注册成功' }
 }
 
-/**
- * 获取当前用户信息
- * @param {string} token - 用户token
- * @returns {Promise<Object>} 用户信息
- */
-export const getCurrentUser = async (token) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/user/current`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    
-    return await response.json()
-  } catch (error) {
-    console.error('Get current user error:', error)
-    throw error
-  }
+export const login = async ({ username, account, password }) => {
+  const inputAccount = (account || username || '').trim()
+  const db = loadDb()
+  const user = db.users.find((u) => u.account === inputAccount)
+  if (!user) return { success: false, message: '账号不存在' }
+  if (user.status === 'disabled') return { success: false, message: '账号已被禁用，请联系管理员' }
+  if (user.password !== password) return { success: false, message: '密码错误' }
+  return { success: true, data: toSafeUser(user) }
 }
 
-/**
- * 更新用户信息
- * @param {Object} userData - 用户数据
- * @param {string} token - 用户token
- * @returns {Promise<Object>}
- */
-export const updateUserInfo = async (userData, token) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/user/update`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(userData)
-    })
-    
-    return await response.json()
-  } catch (error) {
-    console.error('Update user info error:', error)
-    throw error
-  }
+export const logout = async () => ({ success: true })
+
+export const getCurrentUser = async (account) => {
+  const db = loadDb()
+  const user = db.users.find((u) => u.account === account)
+  if (!user) return { success: false, message: '用户不存在' }
+  return { success: true, data: toSafeUser(user) }
 }
 
-/**
- * 修改密码
- * @param {Object} passwordData - 密码数据
- * @param {string} passwordData.oldPassword - 旧密码
- * @param {string} passwordData.newPassword - 新密码
- * @param {string} token - 用户token
- * @returns {Promise<Object>}
- */
-export const changePassword = async (passwordData, token) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/user/change-password`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(passwordData)
-    })
-    
-    return await response.json()
-  } catch (error) {
-    console.error('Change password error:', error)
-    throw error
-  }
+export const updateUserInfo = async (userData = {}) => {
+  const account = (userData.account || '').trim()
+  const db = loadDb()
+  const target = db.users.find((u) => u.account === account)
+  if (!target) return { success: false, message: '用户不存在' }
+
+  mutateDb((draft) => {
+    const user = draft.users.find((u) => u.account === account)
+    user.profile = {
+      ...(user.profile || {}),
+      displayName: userData.displayName ?? user.profile?.displayName ?? account,
+      phone: userData.phone ?? user.profile?.phone ?? '',
+      email: userData.email ?? user.profile?.email ?? ''
+    }
+    if (userData.settings) {
+      user.settings = { ...(user.settings || {}), ...userData.settings }
+    }
+    return draft
+  })
+  const fresh = (await getCurrentUser(account)).data
+  return { success: true, data: fresh }
 }
 
-/**
- * 获取用户列表（管理员功能）
- * @param {Object} params - 查询参数
- * @param {number} params.page - 页码
- * @param {number} params.size - 每页数量
- * @param {string} token - 用户token
- * @returns {Promise<Object>}
- */
-export const getUserList = async (params, token) => {
-  try {
-    const queryString = new URLSearchParams(params).toString()
-    const response = await fetch(`${API_BASE_URL}/user/list?${queryString}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    })
-    
-    return await response.json()
-  } catch (error) {
-    console.error('Get user list error:', error)
-    throw error
+export const changePassword = async ({ account, oldPassword, newPassword }) => {
+  const db = loadDb()
+  const user = db.users.find((u) => u.account === account)
+  if (!user) return { success: false, message: '用户不存在' }
+  if (user.password !== oldPassword) return { success: false, message: '旧密码不正确' }
+  if (!newPassword) return { success: false, message: '新密码不能为空' }
+  mutateDb((draft) => {
+    const target = draft.users.find((u) => u.account === account)
+    target.password = newPassword
+    return draft
+  })
+  return { success: true, message: '密码修改成功' }
+}
+
+export const getUserList = async (params = {}) => {
+  const db = loadDb()
+  const page = Number(params.page || 1)
+  const size = Number(params.size || 10)
+  let list = db.users.map(toSafeUser)
+  if (params.keyword) {
+    list = list.filter((item) => item.account.includes(params.keyword) || String(item.name || '').includes(params.keyword))
   }
+  if (params.role) list = list.filter((item) => item.role === params.role)
+  if (params.status) list = list.filter((item) => item.status === params.status)
+  return { success: true, data: paginate(list, page, size) }
+}
+
+export const adminCreateUser = async ({ account, password, role = 'user' }) => {
+  const normalized = (account || '').trim()
+  if (!normalized || !ACCOUNT_PATTERN.test(normalized)) {
+    return { success: false, message: '账号必须为字母+数字组合' }
+  }
+  if (!password || password.length < 6) {
+    return { success: false, message: '密码至少 6 位' }
+  }
+  const db = loadDb()
+  if (db.users.some((u) => u.account === normalized)) {
+    return { success: false, message: '账号已存在' }
+  }
+  let saved = null
+  mutateDb((draft) => {
+    saved = {
+      id: nextId(draft.users),
+      account: normalized,
+      password,
+      role: role === 'admin' ? 'admin' : 'user',
+      status: 'active',
+      profile: { displayName: normalized, phone: '', email: '' },
+      settings: { theme: 'light', language: 'zh-CN', notifyByEmail: true }
+    }
+    draft.users.unshift(saved)
+    return draft
+  })
+  return { success: true, data: toSafeUser(saved) }
+}
+
+export const adminToggleUserStatus = async ({ account, status }) => {
+  if (!account) return { success: false, message: '账号不能为空' }
+  if (!['active', 'disabled'].includes(status)) return { success: false, message: '状态非法' }
+  const db = loadDb()
+  const target = db.users.find((u) => u.account === account)
+  if (!target) return { success: false, message: '账号不存在' }
+  if (target.role === 'admin' && status === 'disabled') return { success: false, message: '管理员账号不可禁用' }
+  mutateDb((draft) => {
+    const user = draft.users.find((u) => u.account === account)
+    user.status = status
+    return draft
+  })
+  return { success: true }
+}
+
+export const adminResetUserPassword = async ({ account, newPassword }) => {
+  if (!account) return { success: false, message: '账号不能为空' }
+  if (!newPassword || newPassword.length < 6) return { success: false, message: '新密码至少 6 位' }
+  const db = loadDb()
+  const target = db.users.find((u) => u.account === account)
+  if (!target) return { success: false, message: '账号不存在' }
+  mutateDb((draft) => {
+    const user = draft.users.find((u) => u.account === account)
+    user.password = newPassword
+    return draft
+  })
+  return { success: true }
 }
 

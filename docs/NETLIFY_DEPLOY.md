@@ -1,48 +1,60 @@
-# Netlify 发布步骤（演示环境）
+# Netlify 部署步骤（生产可用）
 
-## 1. 推送代码到 GitHub
+## 1) 本地构建与推送
 
 ```bash
+npm install
+npm run build
 git add .
-git commit -m "chore: add supabase demo api and docs"
-git push
+git commit -m "chore: prepare netlify deploy"
+git push origin main
 ```
 
-## 2. 在 Netlify 新建站点
+## 2) 在 Netlify 导入仓库
 
-- 登录 Netlify
-- `Add new site` -> `Import an existing project`
-- 选择你的 GitHub 仓库
+1. 登录 Netlify
+2. 点击 `Add new site` -> `Import an existing project`
+3. 选择 GitHub 并授权仓库
+4. 选择仓库 `jfs-cxds`
 
-## 3. 配置构建参数
+## 3) 构建参数
 
 - Build command: `npm run build`
 - Publish directory: `dist`
 
-## 4. 配置环境变量（非常关键）
+本项目已包含：
 
-在 Netlify 的 Site settings -> Environment variables 添加：
+- `netlify.toml`（构建配置 + SPA 重定向）
+- `public/_redirects`（前端路由刷新不 404）
 
-- `VUE_APP_SUPABASE_URL`
-- `VUE_APP_SUPABASE_ANON_KEY`
+## 4) 环境变量（Supabase）
 
-值与本地 `.env.local` 保持一致。
+在 Netlify 的 `Site settings -> Environment variables` 添加：
 
-## 5. 首次部署后验证
+- `VUE_APP_SUPABASE_URL` = `https://<project-ref>.supabase.co`
+- `VUE_APP_SUPABASE_ANON_KEY` = `sb_publishable_xxx`
 
-- 打开站点 URL
-- 检查页面是否能读取 Supabase 数据
-- 在 `基础项录入` 新增一条，刷新页面仍存在
+注意：
 
-## 6. 演示数据初始化（SQL Editor）
+- 只使用 publishable/anon key
+- 不要填写 secret / service_role key
 
-每次需要重置演示数据时，在 Supabase SQL Editor 执行：
+## 5) 首次部署验证
 
-- `docs/DEMO_INIT.sql`
+1. 打开 Netlify 分配的站点地址
+2. 登录页可正常显示
+3. 业务页面可读取 Supabase 数据
+4. 新增一条记录并刷新，确认数据持久化
 
-## 7. 可选：避免被误操作
+## 6) 后续代码更新发布
 
-- 暂时隐藏批量删除按钮
-- 新增二次确认弹窗（已在页面中实现）
-- 演示前执行一次 `docs/DEMO_INIT.sql` 还原数据
+后续每次更新只需要：
+
+```bash
+git add .
+git commit -m "feat: xxx"
+git push origin main
+```
+
+Netlify 会自动触发新部署，无需手动上传文件。
 

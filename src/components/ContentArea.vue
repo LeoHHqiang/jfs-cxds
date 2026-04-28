@@ -17,17 +17,18 @@
 <style scoped>
 .main-content {
   flex: 1;
-  background-color: #f5f5f5;
+  background: #eef6ff;
   overflow-y: auto;
-  padding: 10px;
+  padding: 12px;
   height: calc(100vh - 71px);
 }
 
 .content-body {
-  background-color: white;
-  padding: 10px;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  background-color: #ffffff;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #dbeaf9;
+  box-shadow: 0 8px 20px rgba(89, 135, 182, 0.12);
   display: block;
   min-height: 100%;
 }
@@ -39,15 +40,15 @@
 }
 
 .main-content::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: #ddebf9;
 }
 
 .main-content::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: #96bfe6;
   border-radius: 4px;
 }
 
 .main-content::-webkit-scrollbar-thumb:hover {
-  background: #bbb;
+  background: #79abd8;
 }
 </style>

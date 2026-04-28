@@ -164,7 +164,9 @@ const onImport = async (e) => {
   if (file) await importMoveApprove(file)
 }
 
-const onQuery = () => {}
+const onQuery = () => {
+  alert('已执行查询')
+}
 const onReset = () => {
   Object.keys(form).forEach(key => {
     form[key] = ''
@@ -179,6 +181,7 @@ const closeConfirm = () => {
   confirm.visible = false
 }
 const confirmDelete = () => {
+  alert('已执行删除操作')
   closeConfirm()
 }
 

@@ -1,57 +1,27 @@
-/**
- * 移模审批 API 预留
- */
+import { loadDb, mutateDb } from './mockDb'
 
-const API_BASE_URL = 'http://your-backend-api.com/api' // TODO: 替换为真实地址
-
-// 指标：待审批、已审批数量
 export const fetchMoveApproveStats = async () => {
-  try {
-    const res = await fetch(`${API_BASE_URL}/move-approve/stats`)
-    return await res.json()
-  } catch (e) {
-    console.error('fetchMoveApproveStats error:', e)
-    return { success: false, message: e.message }
-  }
+  const db = loadDb()
+  return { success: true, data: db.moveApproveStats || { pending: 0, approved: 0 } }
 }
 
-// 图表：审批数据统计（可多折线）
-export const fetchMoveApproveChart = async (params = {}) => {
-  const qs = new URLSearchParams(params).toString()
-  try {
-    const res = await fetch(`${API_BASE_URL}/move-approve/chart?${qs}`)
-    return await res.json()
-  } catch (e) {
-    console.error('fetchMoveApproveChart error:', e)
-    return { success: false, message: e.message }
-  }
+export const fetchMoveApproveChart = async () => {
+  const db = loadDb()
+  return { success: true, data: { series: db.moveApproveSeries || [] } }
 }
 
-// 列表：导出/导入（预留）
-export const exportMoveApprove = async (params = {}) => {
-  const qs = new URLSearchParams(params).toString()
-  try {
-    const res = await fetch(`${API_BASE_URL}/move-approve/export?${qs}`)
-    const type = res.headers.get('content-type') || ''
-    if (type.includes('application/json')) return await res.json()
-    const blob = await res.blob()
-    return { success: true, blob }
-  } catch (e) {
-    console.error('exportMoveApprove error:', e)
-    return { success: false, message: e.message }
-  }
-}
+export const exportMoveApprove = async () => ({ success: true, url: 'about:blank' })
 
 export const importMoveApprove = async (file) => {
-  try {
-    const form = new FormData()
-    form.append('file', file)
-    const res = await fetch(`${API_BASE_URL}/move-approve/import`, { method: 'POST', body: form })
-    return await res.json()
-  } catch (e) {
-    console.error('importMoveApprove error:', e)
-    return { success: false, message: e.message }
-  }
+  if (!file) return { success: false, message: '文件不存在' }
+  mutateDb((db) => {
+    db.moveApproveStats = {
+      pending: Number(db.moveApproveStats?.pending || 0) + 1,
+      approved: Number(db.moveApproveStats?.approved || 0)
+    }
+    return db
+  })
+  return { success: true }
 }
 
 

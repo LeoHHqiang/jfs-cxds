@@ -2,8 +2,8 @@
   <section class="move-apply-page">
     <div class="toolbar-card">
       <div class="toolbar-actions">
-        <button class="btn btn-primary">+ 新建移模申请</button>
-        <button class="btn btn-light">导出 Excel</button>
+        <button class="btn btn-primary" @click="openCreateModal">+ 新建移模申请</button>
+        <button class="btn btn-light" @click="showMessage('已触发导出')">导出 Excel</button>
       </div>
     </div>
 
@@ -73,15 +73,41 @@
         </tbody>
       </table>
     </div>
+
+    <div v-if="createVisible" class="modal-mask" @click.self="closeCreateModal">
+      <div class="modal-card">
+        <h3>新建移模申请</h3>
+        <div class="modal-grid">
+          <input v-model="createForm.partName" placeholder="零件名称" />
+          <input v-model="createForm.partNo" placeholder="零件编号" />
+          <input v-model="createForm.toolName" placeholder="工装名称" />
+          <input v-model="createForm.fromSupplier" placeholder="原供应商" />
+          <input v-model="createForm.toSupplier" placeholder="新供应商" />
+          <input v-model="createForm.applicant" placeholder="申请人" />
+        </div>
+        <p v-if="formError" class="form-error">{{ formError }}</p>
+        <div class="modal-actions">
+          <button class="btn btn-primary" @click="submitCreate">保存</button>
+          <button class="btn btn-light" @click="closeCreateModal">取消</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="message" class="message">{{ message }}</div>
   </section>
 </template>
 
 <script setup>
 /* eslint-disable */
 import { onMounted, reactive, ref } from 'vue'
+import { createMoveApply, fetchMoveApplyList as fetchMoveApplyData } from '@/api'
 
 const loading = ref(false)
 const tableData = ref([])
+const createVisible = ref(false)
+const formError = ref('')
+const message = ref('')
+let messageTimer = null
 
 const filters = reactive({
   partName: '',
@@ -98,10 +124,14 @@ const statusText = {
   rejected: '已驳回'
 }
 
-const mockRows = [
-  { id: 1, applyNo: 'MM20260112001', partName: '副驾驶座椅总成', partNo: '6608347607', toolName: '副驾驶安全带盖板检具A1', fromSupplier: '宁海良诚模具有限公司', toSupplier: '宁波宝贝电子有限公司', applicant: '工程师1', applyTime: '2026-01-12 10:32', status: 'pending' },
-  { id: 2, applyNo: 'MM20260109002', partName: '副驾驶座椅总成', partNo: '6608347607', toolName: '副驾驶安全带盖板检具A2', fromSupplier: '峰诗恩电子有限公司', toSupplier: '宁海良诚模具有限公司', applicant: '采购员2', applyTime: '2026-01-09 16:11', status: 'approved' }
-]
+const createForm = reactive({
+  partName: '',
+  partNo: '',
+  toolName: '',
+  fromSupplier: '',
+  toSupplier: '',
+  applicant: ''
+})
 
 onMounted(() => {
   fetchMoveApplyList()
@@ -110,8 +140,8 @@ onMounted(() => {
 async function fetchMoveApplyList() {
   loading.value = true
   try {
-    // TODO: 接后端列表接口，如 api.getMoveApplyList({ ...filters, pageNum, pageSize })
-    tableData.value = [...mockRows]
+    const res = await fetchMoveApplyData({ ...filters })
+    tableData.value = res?.data?.list || []
   } finally {
     loading.value = false
   }
@@ -125,13 +155,43 @@ function resetFilters() {
 }
 
 function viewDetail(row) {
-  // TODO: 接详情接口或打开详情弹窗
-  console.log('查看移模申请详情:', row)
+  showMessage(`查看移模申请：${row.applyNo}`)
 }
 
 function editApply(row) {
-  // TODO: 接编辑接口或进入编辑页
-  console.log('编辑移模申请:', row)
+  showMessage(`编辑移模申请：${row.applyNo}`)
+}
+
+function showMessage(text) {
+  message.value = text
+  if (messageTimer) clearTimeout(messageTimer)
+  messageTimer = setTimeout(() => {
+    message.value = ''
+  }, 1800)
+}
+
+function openCreateModal() {
+  createVisible.value = true
+  formError.value = ''
+}
+
+function closeCreateModal() {
+  createVisible.value = false
+  formError.value = ''
+}
+
+async function submitCreate() {
+  if (!createForm.partName || !createForm.partNo || !createForm.toolName || !createForm.fromSupplier || !createForm.toSupplier || !createForm.applicant) {
+    formError.value = '请完整填写必填项'
+    return
+  }
+  await createMoveApply({ ...createForm })
+  Object.keys(createForm).forEach((key) => {
+    createForm[key] = ''
+  })
+  closeCreateModal()
+  await fetchMoveApplyList()
+  showMessage('移模申请创建成功')
 }
 </script>
 
@@ -286,5 +346,61 @@ function editApply(row) {
 .status-tag.rejected {
   color: #d14b4b;
   background: #ffeaea;
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+
+.modal-card {
+  width: 560px;
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.modal-grid input {
+  height: 34px;
+  border: 1px solid #dbe4f0;
+  border-radius: 6px;
+  padding: 0 10px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.form-error {
+  color: #de5050;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.message {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  background: #2f7df7;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 1400;
 }
 </style>

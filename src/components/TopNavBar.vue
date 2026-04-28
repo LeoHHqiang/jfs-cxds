@@ -7,7 +7,7 @@
       </div>
       <div class="nav-right">
         <div class="user-info">
-          <div class="user-avatar">{{ userAvatar }}</div>
+          <i class="fas fa-user-circle"></i>
           <span>{{ username || '游客' }}</span>
         </div>
         
@@ -26,17 +26,9 @@
                 <i class="fas fa-lock"></i>
                 <span>修改密码</span>
               </li>
-              <li @click="handleSettings('system')">
+              <li v-if="isAdmin" @click="handleSettings('system')">
                 <i class="fas fa-cogs"></i>
                 <span>系统设置</span>
-              </li>
-              <li @click="handleSettings('backup')">
-                <i class="fas fa-database"></i>
-                <span>数据备份</span>
-              </li>
-              <li @click="handleSettings('export')">
-                <i class="fas fa-file-export"></i>
-                <span>导出数据</span>
               </li>
               <li class="divider"></li>
               <li @click="handleSettings('logout')" class="logout-item">
@@ -53,7 +45,7 @@
 
 <script setup>
 /* eslint-disable */
-import { defineProps, defineEmits, ref, computed } from 'vue'
+import { defineProps, defineEmits, ref, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
   currentPage: {
@@ -67,15 +59,11 @@ const props = defineProps({
   username: {
     type: String,
     default: '游客'
+  },
+  isAdmin: {
+    type: Boolean,
+    default: false
   }
-})
-
-// 根据用户名生成头像字母（取第一个字符的大写）
-const userAvatar = computed(() => {
-  if (props.username && props.username.trim() !== '') {
-    return props.username.charAt(0).toUpperCase()
-  }
-  return 'U'
 })
 
 const emit = defineEmits(['logout', 'settings-action'])
@@ -106,16 +94,21 @@ const handleClickOutside = (event) => {
   }
 }
 
-// 监听文档点击事件
-document.addEventListener('click', handleClickOutside)
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <style scoped>
 .top-nav-bar {
-  background-color: #0270C1;
+  background: linear-gradient(90deg, #7ebef6, #9fd9ff);
   height: 71px;
   width: 100%;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 10px rgba(84, 137, 191, 0.24);
   flex-shrink: 0;
 }
 
@@ -164,16 +157,8 @@ document.addEventListener('click', handleClickOutside)
   color: #ffffff;
 }
 
-.user-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #f1ab15;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-weight: bold;
+.user-info i {
+  font-size: 22px;
 }
 
 .settings-container {
@@ -195,7 +180,7 @@ document.addEventListener('click', handleClickOutside)
 }
 
 .settings-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.22);
 }
 
 .settings-dropdown {
@@ -204,7 +189,7 @@ document.addEventListener('click', handleClickOutside)
   right: 0;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 20px rgba(83, 130, 176, 0.25);
   min-width: 180px;
   z-index: 1000;
   overflow: hidden;
@@ -228,7 +213,7 @@ document.addEventListener('click', handleClickOutside)
 }
 
 .settings-menu li:hover:not(.divider) {
-  background-color: #f5f5f5;
+  background-color: #edf6ff;
 }
 
 .settings-menu li i {

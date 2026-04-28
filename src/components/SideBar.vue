@@ -6,7 +6,7 @@
     
     <ul class="menu">
       <li 
-        v-for="item in menuItems" 
+        v-for="item in resolvedMenuItems" 
         :key="item.path"
         :class="['menu-item', { 
           active: activeMenu === item.path,
@@ -50,7 +50,7 @@
 
 <script setup>
 /* eslint-disable */
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
   activeMenu: {
@@ -60,6 +60,10 @@ const props = defineProps({
   activeSubmenu: {
     type: String,
     default: ''
+  },
+  menuItems: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -69,7 +73,7 @@ const emit = defineEmits(['menu-change', 'submenu-change'])
 const isDropdownOpen = ref(false)
 const activeSubmenuState = ref('')
 
-const menuItems = [
+const defaultMenuItems = [
   { name: '首页', path: 'home', icon: 'fas fa-home' },
   {
     name: '验收管理',
@@ -99,7 +103,16 @@ const menuItems = [
   { name: '供应商管理', path: 'supplier', icon: 'fas fa-truck' }
 ]
 
-const dropdownMenuPaths = menuItems.filter(item => item.hasDropdown).map(item => item.path)
+const resolvedMenuItems = computed(() => {
+  if (props.menuItems && props.menuItems.length) {
+    return props.menuItems
+  }
+  return defaultMenuItems
+})
+
+const dropdownMenuPaths = computed(() => {
+  return resolvedMenuItems.value.filter((item) => item.hasDropdown).map((item) => item.path)
+})
 
 // 处理主菜单点击
 const handleMenuClick = (path) => {
@@ -135,7 +148,7 @@ const handleSubmenuClick = (mainPath, subItem) => {
 watch(
   () => props.activeMenu,
   (menu) => {
-    isDropdownOpen.value = dropdownMenuPaths.includes(menu)
+    isDropdownOpen.value = dropdownMenuPaths.value.includes(menu)
   },
   { immediate: true }
 )
@@ -153,17 +166,18 @@ watch(
 .sidebar {
   width: 220px;
   height: 100vh;
-  background: linear-gradient(180deg, #2c3e50, #1a2530);
-  color: white;
-  box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(180deg, #eaf5ff, #dceeff);
+  color: #39506a;
+  box-shadow: 2px 0 14px rgba(84, 137, 191, 0.16);
   flex-shrink: 0;
   overflow-y: auto;
+  border-right: 1px solid #c9e0f5;
 }
 
 .logo {
   display: flex;
   height: 70px;
-  background: #008DF7;
+  background: linear-gradient(90deg, #7ebef6, #9fd9ff);
   align-items: center;
   padding: 0 20px;
 }
@@ -196,8 +210,8 @@ watch(
 
 .menu-item:not(.has-dropdown):hover,
 .menu-item.active:not(.has-dropdown) {
-  background-color: #34495e;
-  border-left-color: #008DF7;
+  background-color: #d8ecff;
+  border-left-color: #5ea7ea;
 }
 
 .menu-item.has-dropdown {
@@ -205,8 +219,8 @@ watch(
 }
 
 .menu-item.has-dropdown.dropdown-open {
-  background-color: #2a3a4d;
-  border-left-color: #008DF7;
+  background-color: #d7ebff;
+  border-left-color: #5ea7ea;
 }
 
 .menu-link {
@@ -236,13 +250,13 @@ watch(
 
 .dropdown-arrow {
   font-size: 12px;
-  color: #bdc3c7;
+  color: #87a4c4;
   transition: transform 0.3s ease;
 }
 
 .menu-item.dropdown-open .dropdown-arrow {
   transform: rotate(0deg);
-  color: #008DF7;
+  color: #5ea7ea;
 }
 
 .menu-text {
@@ -252,7 +266,7 @@ watch(
 
 .menu-item.active i,
 .menu-item.dropdown-open i {
-  color: #008DF7;
+  color: #5ea7ea;
 }
 
 /* 下拉菜单样式 */
@@ -260,7 +274,7 @@ watch(
   list-style: none;
   padding: 0;
   margin: 0;
-  background-color: #1e2a38;
+  background-color: #edf6ff;
   overflow: hidden;
 }
 
@@ -288,32 +302,32 @@ watch(
 }
 
 .dropdown-item:hover {
-  background-color: #2a3a4d;
+  background-color: #dbeeff;
 }
 
 .dropdown-item.active {
-  background-color: #34495e;
-  border-left-color: #008DF7;
+  background-color: #cfe7ff;
+  border-left-color: #5ea7ea;
 }
 
 .dropdown-item.active .submenu-icon {
-  color: #008DF7;
+  color: #5ea7ea;
 }
 
 .submenu-icon {
   font-size: 6px;
-  color: #7f8c8d;
+  color: #90a5bd;
   transition: color 0.3s ease;
 }
 
 .submenu-text {
   font-size: 13px;
-  color: #ecf0f1;
+  color: #3d5470;
   transition: color 0.3s ease;
 }
 
 .dropdown-item.active .submenu-text {
-  color: #008DF7;
+  color: #478ecf;
   font-weight: 500;
 }
 
@@ -323,15 +337,15 @@ watch(
 }
 
 .sidebar::-webkit-scrollbar-track {
-  background: #2c3e50;
+  background: #d8e8f8;
 }
 
 .sidebar::-webkit-scrollbar-thumb {
-  background: #008DF7;
+  background: #88bbea;
   border-radius: 3px;
 }
 
 .sidebar::-webkit-scrollbar-thumb:hover {
-  background: #0077cc;
+  background: #6fa7db;
 }
 </style>
