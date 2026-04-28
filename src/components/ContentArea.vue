@@ -17,20 +17,20 @@
 <style scoped>
 .main-content {
   flex: 1;
-  background: #eef6ff;
+  background: #f3f6fb;
   overflow-y: auto;
-  padding: 12px;
+  padding: 10px;
   height: calc(100vh - 71px);
 }
 
 .content-body {
-  background-color: #ffffff;
-  padding: 12px;
+  background-color: #f3f6fb;
+  padding: 10px;
   border-radius: 10px;
-  border: 1px solid #dbeaf9;
-  box-shadow: 0 8px 20px rgba(89, 135, 182, 0.12);
+  border: 1px solid #e4ebf4;
   display: block;
   min-height: 100%;
+  position: relative;
 }
 
  

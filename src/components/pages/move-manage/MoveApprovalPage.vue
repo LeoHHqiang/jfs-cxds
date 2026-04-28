@@ -36,7 +36,7 @@
           导入Excel
           <input type="file" @change="onImport" />
         </label>
-        <button class="btn btn-ghost">导出 - 批量通过</button>
+        <button class="btn btn-ghost" @click="onBatchExport">导出 - 批量通过</button>
         <button class="btn btn-ghost" @click="openDeleteConfirm">删除</button>
       </div>
     </div>
@@ -171,6 +171,10 @@ const onReset = () => {
   Object.keys(form).forEach(key => {
     form[key] = ''
   })
+}
+
+const onBatchExport = () => {
+  alert('已触发批量通过导出')
 }
 
 const confirm = reactive({ visible: false })

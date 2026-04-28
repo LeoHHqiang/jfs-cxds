@@ -66,7 +66,7 @@
 
 <script setup>
 /* eslint-disable */
-import { ref, computed, reactive, watch } from 'vue'
+import { ref, computed, reactive, watch, onMounted, onBeforeUnmount } from 'vue'
 import TopNavBar from './TopNavBar.vue'
 import SideBar from './SideBar.vue'
 import ContentArea from './ContentArea.vue'
@@ -94,8 +94,28 @@ const activeSubmenu = ref('')
 
 const menuItems = [
   { name: '首页', path: 'home', icon: 'fas fa-home' },
-  { name: '验收管理', path: 'accept-approve', icon: 'fas fa-clipboard-check' },
-  { name: '移模管理', path: 'move-approve', icon: 'fas fa-exchange-alt' },
+  {
+    name: '验收管理',
+    path: 'accept-approve',
+    icon: 'fas fa-clipboard-check',
+    hasDropdown: true,
+    submenuItems: [
+      { key: 'create', label: '新建验收管理' },
+      { key: 'base', label: '基础项录入' },
+      { key: 'delivery', label: '交付追踪' },
+      { key: 'accept', label: '验收项录入' }
+    ]
+  },
+  {
+    name: '移模管理',
+    path: 'move-approve',
+    icon: 'fas fa-exchange-alt',
+    hasDropdown: true,
+    submenuItems: [
+      { key: 'move-approval', label: '移模审批' },
+      { key: 'move-apply', label: '移模申请' }
+    ]
+  },
   { name: '模板管理', path: 'template', icon: 'fas fa-cube', adminOnly: true },
   { name: '历史验收', path: 'accept-history', icon: 'fas fa-history' },
   { name: '操作记录', path: 'record', icon: 'fas fa-clipboard-list' },
@@ -192,6 +212,33 @@ const setActiveSubmenu = (payload) => {
     return
   }
   activeSubmenu.value = activeMenu.value === 'move-approve' ? 'move-approval' : 'create'
+}
+
+const buildHash = () => {
+  if (activeSubmenu.value) return `#/${activeMenu.value}/${activeSubmenu.value}`
+  return `#/${activeMenu.value}`
+}
+
+const syncHash = () => {
+  const nextHash = buildHash()
+  if (window.location.hash !== nextHash) {
+    window.location.hash = nextHash
+  }
+}
+
+const applyHash = () => {
+  const hash = (window.location.hash || '').replace(/^#\/?/, '')
+  if (!hash) return
+  const [menu, submenu] = hash.split('/')
+  if (!allowedMenuPaths.value.includes(menu)) return
+  activeMenu.value = menu
+  if (submenu) {
+    activeSubmenu.value = submenu
+    return
+  }
+  if (menu === 'accept-approve') activeSubmenu.value = 'create'
+  else if (menu === 'move-approve') activeSubmenu.value = 'move-approval'
+  else activeSubmenu.value = ''
 }
 
 const handleLogout = () => {
@@ -300,9 +347,26 @@ watch(
       activeMenu.value = paths[0] || 'home'
       activeSubmenu.value = ''
     }
+    applyHash()
   },
   { immediate: true }
 )
+
+watch(
+  () => [activeMenu.value, activeSubmenu.value],
+  () => {
+    syncHash()
+  }
+)
+
+onMounted(() => {
+  applyHash()
+  window.addEventListener('hashchange', applyHash)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('hashchange', applyHash)
+})
 </script>
 
 <style scoped>

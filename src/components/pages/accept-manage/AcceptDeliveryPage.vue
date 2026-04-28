@@ -1,5 +1,5 @@
 <template>
-  <section class="delivery-page">
+  <section ref="pageRootRef" class="delivery-page">
     <div class="toolbar-card">
       <div class="toolbar-actions">
         <button class="btn btn-indigo" @click="openImportModal">导入Excel</button>
@@ -78,7 +78,7 @@
       </div>
     </div>
 
-    <div class="table-card">
+    <div ref="tableCardRef" class="table-card" :style="tableCardStyle">
       <table class="data-table">
         <thead>
           <tr>
@@ -107,7 +107,7 @@
           <tr v-else-if="!tableData.length">
             <td colspan="10" class="empty-row">暂无交付追踪数据</td>
           </tr>
-          <tr v-for="row in tableData" :key="row.id">
+          <tr v-for="row in pagedData" :key="row.id">
             <td class="checkbox-col">
               <input type="checkbox" :checked="selectedIds.includes(row.id)" @change="toggleRowSelection(row.id)" />
             </td>
@@ -127,19 +127,24 @@
       </table>
     </div>
 
-    <div class="table-footer">
-      <span>显示第 1 到 {{ tableData.length }} 条记录，共 {{ pagination.total }} 条记录</span>
+    <div ref="tableFooterRef" class="table-footer">
+      <span>显示第 {{ pageStart }} 到 {{ pageEnd }} 条记录，共 {{ pagination.total }} 条记录</span>
       <div class="pager">
         <span>跳转到</span>
-        <input type="text" />
+        <input v-model.number="jumpPage" type="text" @keyup.enter="submitJumpPage" />
         <span>页</span>
-        <button>&lt;&lt;</button>
-        <button>&lt;</button>
-        <button class="active">1</button>
-        <button>2</button>
-        <button>3</button>
-        <button>&gt;</button>
-        <button>&gt;&gt;</button>
+        <button :disabled="pagination.pageNum===1" @click="goPage(1)">&lt;&lt;</button>
+        <button :disabled="pagination.pageNum===1" @click="goPage(pagination.pageNum - 1)">&lt;</button>
+        <button
+          v-for="p in pageList"
+          :key="`delivery-${p}`"
+          :class="{ active: p===pagination.pageNum }"
+          @click="goPage(p)"
+        >
+          {{ p }}
+        </button>
+        <button :disabled="pagination.pageNum===totalPages" @click="goPage(pagination.pageNum + 1)">&gt;</button>
+        <button :disabled="pagination.pageNum===totalPages" @click="goPage(totalPages)">&gt;&gt;</button>
       </div>
     </div>
 
@@ -275,7 +280,7 @@
 
 <script setup>
 /* eslint-disable */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick } from 'vue'
 import { createDeliveryItem, deleteDeliveryItems, getDeliveryItems } from '@/api'
 
 const loading = ref(false)
@@ -286,6 +291,14 @@ const pagination = reactive({
   pageSize: 10,
   total: 0
 })
+const jumpPage = ref(1)
+const pageRootRef = ref(null)
+const tableCardRef = ref(null)
+const tableFooterRef = ref(null)
+const tableCardHeight = ref(260)
+const ROW_HEIGHT = 34
+const TABLE_HEAD_HEIGHT = 42
+const tableCardStyle = computed(() => ({ height: `${tableCardHeight.value}px` }))
 const showReplaceModal = ref(false)
 const currentReplaceRow = ref(null)
 const batchMoveModal = ref(false)
@@ -365,20 +378,45 @@ const filters = reactive({
   purchaser: ''
 })
 
+const totalPages = computed(() => Math.max(1, Math.ceil(pagination.total / pagination.pageSize)))
+const pagedData = computed(() => {
+  const start = (pagination.pageNum - 1) * pagination.pageSize
+  return tableData.value.slice(start, start + pagination.pageSize)
+})
+const pageStart = computed(() => (pagination.total ? (pagination.pageNum - 1) * pagination.pageSize + 1 : 0))
+const pageEnd = computed(() => Math.min(pagination.pageNum * pagination.pageSize, pagination.total))
+const pageList = computed(() => {
+  const max = totalPages.value
+  if (max <= 5) return Array.from({ length: max }, (_, i) => i + 1)
+  const current = pagination.pageNum
+  const start = Math.max(1, Math.min(current - 2, max - 4))
+  return Array.from({ length: 5 }, (_, i) => start + i)
+})
 const isAllChecked = computed(() => {
-  return tableData.value.length > 0 && selectedIds.value.length === tableData.value.length
+  return pagedData.value.length > 0 && pagedData.value.every((item) => selectedIds.value.includes(item.id))
 })
 
 onMounted(() => {
   fetchDeliveryList()
+  nextTick(updatePageSizeByHeight)
+  window.addEventListener('resize', updatePageSizeByHeight)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updatePageSizeByHeight)
 })
 
 async function fetchDeliveryList() {
   loading.value = true
   try {
     const res = await getDeliveryItems(filters)
-    tableData.value = res.list || []
+    tableData.value = ensureDeliveryRows(res.list || [])
     pagination.total = res.total || tableData.value.length
+    if (pagination.total !== tableData.value.length) pagination.total = tableData.value.length
+    pagination.pageNum = 1
+    jumpPage.value = 1
+    await nextTick()
+    updatePageSizeByHeight()
   } catch (error) {
     console.error('获取交付追踪数据失败:', error)
   } finally {
@@ -447,7 +485,12 @@ async function confirmImport() {
 }
 
 function toggleAllSelection(checked) {
-  selectedIds.value = checked ? tableData.value.map(item => item.id) : []
+  const currentIds = pagedData.value.map((item) => item.id)
+  if (!checked) {
+    selectedIds.value = selectedIds.value.filter((id) => !currentIds.includes(id))
+    return
+  }
+  selectedIds.value = Array.from(new Set([...selectedIds.value, ...currentIds]))
 }
 
 function toggleRowSelection(id) {
@@ -456,6 +499,55 @@ function toggleRowSelection(id) {
     return
   }
   selectedIds.value = [...selectedIds.value, id]
+}
+
+function goPage(target) {
+  pagination.pageNum = Math.min(Math.max(1, target), totalPages.value)
+  jumpPage.value = pagination.pageNum
+}
+
+function submitJumpPage() {
+  goPage(Number(jumpPage.value) || 1)
+}
+
+function updatePageSizeByHeight() {
+  if (!tableCardRef.value || !tableFooterRef.value) return
+  const cardRect = tableCardRef.value.getBoundingClientRect()
+  const footerRect = tableFooterRef.value.getBoundingClientRect()
+  const maxHeightByScreen = Math.floor(footerRect.top - cardRect.top - 6)
+  if (maxHeightByScreen > 0) {
+    tableCardHeight.value = maxHeightByScreen
+  }
+  const headEl = tableCardRef.value.querySelector('thead')
+  const sampleRowEl = tableCardRef.value.querySelector('tbody tr:not(.empty-row)')
+  const headHeight = Math.ceil(headEl?.getBoundingClientRect().height || TABLE_HEAD_HEIGHT)
+  const rowHeight = ROW_HEIGHT
+  const cardHeight = tableCardHeight.value || tableCardRef.value.clientHeight || 0
+  const availableHeight = Math.max(0, cardHeight - headHeight - 2)
+  const rows = Math.max(10, Math.floor(availableHeight / rowHeight) + 1)
+  if (rows !== pagination.pageSize) {
+    pagination.pageSize = rows
+    pagination.pageNum = Math.min(pagination.pageNum, totalPages.value)
+  }
+}
+
+function ensureDeliveryRows(list) {
+  if (!list.length) return list
+  if (list.length >= 30) return list
+  const seed = [...list]
+  const needCount = 30 - seed.length
+  for (let i = 0; i < needCount; i++) {
+    const origin = list[i % list.length]
+    const suffix = i + 1
+    seed.push({
+      ...origin,
+      id: `demo-delivery-${origin.id}-${suffix}`,
+      partNo: `${origin.partNo || 'PART'}-${suffix}`,
+      childNo: `${origin.childNo || 'CHILD'}-${suffix}`,
+      realToolNo: `${origin.realToolNo || 'REAL'}-${suffix}`
+    })
+  }
+  return seed
 }
 
 function handleFollow(row) {
@@ -558,10 +650,13 @@ async function confirmAction() {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: #f3f6fb;
-  border: 1px solid #e4ebf4;
-  border-radius: 10px;
-  padding: 10px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  padding-bottom: 0;
+  height: calc(100vh - 150px);
+  overflow: hidden;
 }
 
 .toolbar-card,
@@ -651,6 +746,7 @@ async function confirmAction() {
 .table-card {
   padding: 0;
   overflow-x: auto;
+  flex: 1;
 }
 
 .data-table {
@@ -703,7 +799,16 @@ async function confirmAction() {
   align-items: center;
   color: #71849b;
   font-size: 12px;
-  padding: 4px 2px;
+  padding: 8px 10px;
+  position: fixed;
+  left: 232px;
+  right: 10px;
+  bottom: 10px;
+  z-index: 120;
+  background: #fdfefe;
+  border: 1px solid #dfe8f3;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(39, 77, 120, 0.08);
 }
 
 .pager {
