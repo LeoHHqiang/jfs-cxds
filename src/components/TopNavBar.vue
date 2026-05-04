@@ -8,7 +8,10 @@
       <div class="nav-right">
         <div class="user-info">
           <i class="fas fa-user-circle"></i>
-          <span>{{ username || '游客' }}</span>
+          <div class="user-text">
+            <span class="user-name">{{ username || '游客' }}</span>
+            <span v-if="loginAccount && loginAccount !== '游客'" class="user-meta">账号 {{ loginAccount }}</span>
+          </div>
         </div>
         
         <div class="settings-container">
@@ -59,6 +62,10 @@ const props = defineProps({
   username: {
     type: String,
     default: '游客'
+  },
+  loginAccount: {
+    type: String,
+    default: ''
   },
   isAdmin: {
     type: Boolean,
@@ -159,6 +166,25 @@ onBeforeUnmount(() => {
 
 .user-info i {
   font-size: 22px;
+}
+
+.user-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 1.25;
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.user-meta {
+  font-size: 12px;
+  opacity: 0.92;
+  font-weight: 400;
 }
 
 .settings-container {

@@ -2,7 +2,8 @@
   <div class="supplier-page">
     <div class="toolbar">
       <h3>供应商管理</h3>
-      <button @click="openCreate">新增供应商</button>
+      <button v-if="canAddSupplier" type="button" @click="openCreate">新增供应商</button>
+      <span v-else class="toolbar-hint">当前账号仅可查看，新增供应商请联系管理员。</span>
     </div>
     <table class="table">
       <thead>
@@ -43,15 +44,21 @@
 
 <script setup>
 /* eslint-disable */
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { createSupplier, fetchSuppliers } from '@/api'
 
-defineProps({
+const props = defineProps({
   pageName: {
     type: String,
     default: '供应商管理'
+  },
+  user: {
+    type: Object,
+    default: () => ({})
   }
 })
+
+const canAddSupplier = computed(() => (props.user?.role || '') === 'admin')
 
 const suppliers = ref([])
 const createVisible = ref(false)
@@ -74,6 +81,7 @@ const showMessage = (text) => {
 }
 
 const openCreate = () => {
+  if (!canAddSupplier.value) return
   createVisible.value = true
   error.value = ''
 }
@@ -83,11 +91,19 @@ const closeCreate = () => {
 }
 
 const submitCreate = async () => {
+  if (!canAddSupplier.value) {
+    error.value = '无权限新增供应商'
+    return
+  }
   if (!form.name || !form.contact || !form.phone) {
     error.value = '名称、联系人、电话为必填'
     return
   }
-  await createSupplier({ ...form })
+  const res = await createSupplier({ ...form })
+  if (!res?.success) {
+    error.value = res?.message || '保存失败'
+    return
+  }
   Object.assign(form, { name: '', contact: '', phone: '', level: 'C', status: '合作中' })
   closeCreate()
   await loadData()
@@ -115,6 +131,15 @@ onMounted(loadData)
   background: #fff;
   border-radius: 6px;
   padding: 0 10px;
+  cursor: pointer;
+}
+
+.toolbar-hint {
+  font-size: 13px;
+  color: #6b7c93;
+  max-width: 420px;
+  text-align: right;
+  line-height: 1.4;
 }
 
 .table {

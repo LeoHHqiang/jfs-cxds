@@ -1,0 +1,42 @@
+/**
+ * 与 SideBar.vue 侧栏一致的滚动条（轨道 #d8e8f8、滑块 #88bbea、悬停 #6fa7db、圆角 3px、粗细 6px）
+ * 用于主内容区、基础项/交付追踪/验收项表格等可滚动容器；需在元素上增加 class: scrollbar-like-sidebar
+ */
+.scrollbar-like-sidebar {
+  scrollbar-width: thin;
+  scrollbar-color: #88bbea #d8e8f8;
+}
+
+.scrollbar-like-sidebar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-like-sidebar::-webkit-scrollbar-track {
+  background: #d8e8f8;
+}
+
+.scrollbar-like-sidebar::-webkit-scrollbar-thumb {
+  background: #88bbea;
+  border-radius: 3px;
+}
+
+.scrollbar-like-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #6fa7db;
+}
+
+/** 筛查区与表格之间的横向同步条容器（与表格 scrollLeft 同步） */
+.table-h-scroll-proxy {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  width: 100%;
+  min-height: 12px;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+.table-h-scroll-proxy-inner {
+  height: 1px;
+  pointer-events: none;
+}

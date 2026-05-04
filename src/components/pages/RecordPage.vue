@@ -17,10 +17,15 @@
 
     <!-- 筛选卡片 -->
     <div class="filters-card">
+      <p class="filters-hint">列表以本地数据为准；「节点完成」来自各账号在验收流程中点击「完成节点」或提交「模具交付建档」的时间与账号。</p>
       <div class="filters-grid">
         <div class="form-item">
           <label class="label">操作日期：</label>
           <input class="input" v-model="form.date" placeholder="请输入" />
+        </div>
+        <div class="form-item">
+          <label class="label">账号：</label>
+          <input class="input" v-model="form.account" placeholder="登录账号" />
         </div>
         <div class="form-item">
           <label class="label">操作角色：</label>
@@ -35,6 +40,10 @@
             <option value="">请选择</option>
             <option v-for="t in typeOptions" :key="t.value" :value="t.value">{{ t.label }}</option>
           </select>
+        </div>
+        <div class="form-item">
+          <label class="label">完成节点：</label>
+          <input class="input" v-model="form.node" placeholder="如：基础项录入" />
         </div>
         <div class="form-item">
           <label class="label">关联项目：</label>
@@ -53,28 +62,32 @@
         <table class="table">
           <thead>
             <tr>
-              <th style="width: 160px">时间</th>
-              <th style="width: 120px">操作人</th>
-              <th style="width: 120px">角色</th>
-              <th style="width: 140px">类型</th>
-              <th style="width: 200px">关联项目</th>
-              <th>描述</th>
+              <th style="width: 168px">时间</th>
+              <th style="width: 110px">账号</th>
+              <th style="width: 100px">操作人</th>
+              <th style="width: 96px">角色</th>
+              <th style="width: 100px">操作类型</th>
+              <th style="width: 120px">完成节点</th>
+              <th style="width: 120px">关联项目</th>
+              <th>描述 / 备注</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="loading">
-              <td colspan="6" class="center">加载中...</td>
+              <td colspan="8" class="center">加载中...</td>
             </tr>
             <tr v-else-if="records.length === 0">
-              <td colspan="6" class="center empty">暂无数据</td>
+              <td colspan="8" class="center empty">暂无数据</td>
             </tr>
             <tr v-else v-for="rec in records" :key="rec.id">
               <td>{{ rec.time }}</td>
-              <td>{{ rec.userName }}</td>
-              <td>{{ rec.role }}</td>
-              <td>{{ rec.type }}</td>
+              <td>{{ rec.account || '—' }}</td>
+              <td>{{ rec.userName || '—' }}</td>
+              <td>{{ roleLabel(rec.role) }}</td>
+              <td>{{ typeLabel(rec.type) }}</td>
+              <td>{{ rec.node || '—' }}</td>
               <td>{{ rec.project || '-' }}</td>
-              <td>{{ rec.description }}</td>
+              <td>{{ rec.description || '—' }}</td>
             </tr>
           </tbody>
         </table>
@@ -104,23 +117,44 @@ const props = defineProps({
 
 const form = reactive({
   date: '',
+  account: '',
   role: '',
   type: '',
+  node: '',
   project: ''
 })
 
 const roleOptions = [
   { label: '管理员', value: 'admin' },
+  { label: '普通账号', value: 'user' },
+  { label: '审批账号', value: 'approver' },
   { label: '审核员', value: 'auditor' },
   { label: '成员', value: 'member' }
 ]
 
 const typeOptions = [
+  { label: '节点完成', value: 'stage_complete' },
   { label: '创建', value: 'create' },
   { label: '修改', value: 'update' },
   { label: '删除', value: 'delete' },
   { label: '导入/导出', value: 'transfer' }
 ]
+
+function roleLabel(role) {
+  const m = { admin: '管理员', user: '普通账号', approver: '审批账号', auditor: '审核员', member: '成员' }
+  return m[role] || role || '—'
+}
+
+function typeLabel(type) {
+  const m = {
+    stage_complete: '节点完成',
+    create: '创建',
+    update: '修改',
+    delete: '删除',
+    transfer: '导入/导出'
+  }
+  return m[type] || type || '—'
+}
 
 const records = ref([])
 const loading = ref(false)
@@ -134,26 +168,23 @@ const buildQuery = () => ({
   page: page.value,
   size: size.value,
   date: form.date || undefined,
+  account: form.account || undefined,
   role: form.role || undefined,
   type: form.type || undefined,
+  node: form.node || undefined,
   project: form.project || undefined
 })
 
 const loadData = async () => {
   loading.value = true
   try {
-    // 预期后端返回 { success, data: { list: [], total } }
     const res = await fetchOperationRecords(buildQuery())
-    if (res && res.data) {
+    if (res && res.success && res.data) {
       records.value = res.data.list || []
       total.value = Number(res.data.total || 0)
     } else {
-      // 本地占位数据，方便前端联调前演示
-      records.value = [
-        { id: 'd1', time: '2025-01-01 10:00:00', userName: '张三', role: 'admin', type: 'create', project: 'P-001', description: '新增项目 P-001' },
-        { id: 'd2', time: '2025-01-02 11:20:00', userName: '李四', role: 'member', type: 'update', project: 'P-002', description: '更新里程碑' }
-      ]
-      total.value = 2
+      records.value = []
+      total.value = 0
     }
   } finally {
     loading.value = false
@@ -167,8 +198,10 @@ const onQuery = async () => {
 
 const onReset = async () => {
   form.date = ''
+  form.account = ''
   form.role = ''
   form.type = ''
+  form.node = ''
   form.project = ''
   await onQuery()
 }
@@ -251,9 +284,16 @@ onMounted(loadData)
   margin-bottom: 12px;
 }
 
+.filters-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+}
+
 .filters-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px 16px;
 }
 
@@ -300,6 +340,9 @@ onMounted(loadData)
 
 @media (max-width: 1200px) {
   .filters-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 720px) {
+  .filters-grid { grid-template-columns: 1fr; }
 }
 </style>
 

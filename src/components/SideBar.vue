@@ -1,7 +1,18 @@
 <template>
-  <aside class="sidebar">
+  <aside class="sidebar scrollbar-like-sidebar">
     <div class="logo">
-      <h1><i class="fas fa-toolbox"></i>模具管理系统</h1>
+      <h1 class="logo-heading">
+        <span class="logo-left">
+          <i class="fas fa-toolbox logo-tool-icon" aria-hidden="true"></i>
+          <span class="logo-title-text">模具管理系统</span>
+        </span>
+        <img
+          class="logo-brand-img"
+          src="/brand-jfseat-grammer.png"
+          alt="JFSEAT · GRAMMER"
+          loading="lazy"
+        />
+      </h1>
     </div>
     
     <ul class="menu">
@@ -75,18 +86,7 @@ const activeSubmenuState = ref('')
 
 const defaultMenuItems = [
   { name: '首页', path: 'home', icon: 'fas fa-home' },
-  {
-    name: '验收管理',
-    path: 'accept-approve',
-    icon: 'fas fa-clipboard-check',
-    hasDropdown: true,
-    submenuItems: [
-      { key: 'create', label: '新建验收管理' },
-      { key: 'base', label: '基础项录入' },
-      { key: 'delivery', label: '交付追踪' },
-      { key: 'accept', label: '验收项录入' }
-    ]
-  },
+  { name: '验收管理', path: 'accept-approve', icon: 'fas fa-clipboard-check' },
   {
     name: '移模管理',
     path: 'move-approve',
@@ -176,23 +176,60 @@ watch(
 
 .logo {
   display: flex;
-  height: 70px;
+  height: 60px;
   background: linear-gradient(90deg, #7ebef6, #9fd9ff);
   align-items: center;
-  padding: 0 20px;
+  padding: 0 6px 0 10px;
 }
 
-.logo h1 {
-  font-size: 16px;
+.logo h1.logo-heading {
+  font-size: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  column-gap: 6px;
   color: #ffffff;
   margin: 0;
+  flex-wrap: nowrap;
+  line-height: 1;
+  min-width: 0;
+  width: 100%;
 }
 
-.logo i {
+.logo-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.logo h1.logo-heading .logo-tool-icon {
+  flex-shrink: 0;
   color: #ffffff;
+  font-size: 16px;
+  width: 1em;
+  text-align: center;
+}
+
+.logo-title-text {
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  min-width: 0;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+/* 黑底白标 PNG：靠右留白，左侧标题可放大 */
+.logo-brand-img {
+  height: 28px;
+  width: auto;
+  max-width: 92px;
+  object-fit: contain;
+  flex: 0 0 auto;
+  display: block;
+  mix-blend-mode: screen;
 }
 
 .menu {
@@ -331,21 +368,4 @@ watch(
   font-weight: 500;
 }
 
-/* Scrollbar Styles */
-.sidebar::-webkit-scrollbar {
-  width: 6px;
-}
-
-.sidebar::-webkit-scrollbar-track {
-  background: #d8e8f8;
-}
-
-.sidebar::-webkit-scrollbar-thumb {
-  background: #88bbea;
-  border-radius: 3px;
-}
-
-.sidebar::-webkit-scrollbar-thumb:hover {
-  background: #6fa7db;
-}
 </style>

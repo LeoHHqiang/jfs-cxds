@@ -13,6 +13,7 @@ export * from './demoApi'
 export * from './supplier'
 export * from './moveApply'
 export * from './home'
+export * from './flowQuery'
 // export * from './download'
 // export * from './role'
 

@@ -1,13 +1,22 @@
 <template>
   <section ref="pageRootRef" class="base-page">
     <div class="toolbar-card">
-      <div class="toolbar-actions">
+      <div class="toolbar-row">
+        <button
+          type="button"
+          class="btn btn-complete"
+          :disabled="stageCompleteBusy"
+          @click="onStageComplete"
+        >
+          完成节点
+        </button>
+        <div class="toolbar-actions">
         <button class="btn btn-primary" @click="openEditModal('create')">+ 新增数据</button>
-        <button class="btn btn-purple">+ 下载模板</button>
+        <button type="button" class="btn btn-purple" @click="downloadBaseTemplate">+ 下载模板</button>
         <button class="btn btn-indigo" @click="openImportModal">导入 Excel</button>
-        <button class="btn btn-light">导出 Excel</button>
-        <button class="btn btn-light" @click="openEditModal('batch')">批量修改</button>
+        <button type="button" class="btn btn-light" @click="exportBaseExcel">导出 Excel</button>
         <button class="btn btn-light danger" @click="openDeleteConfirm()">删除</button>
+        </div>
       </div>
     </div>
 
@@ -47,7 +56,7 @@
           </select>
         </div>
         <div class="form-item">
-          <label>供应商根具编号：</label>
+          <label>供应商模具编号：</label>
           <input v-model="filters.vendorToolNo" type="text" placeholder="请输入" />
         </div>
         <div class="form-item">
@@ -56,39 +65,41 @@
         </div>
         <div class="form-item">
           <label>供应商：</label>
-          <select v-model="filters.supplier">
-            <option value="">请选择</option>
-            <option value="维诗恩塑胶有限公司">维诗恩塑胶有限公司</option>
-            <option value="鸿瑞兴模具有限公司">鸿瑞兴模具有限公司</option>
-          </select>
+          <input v-model="filters.supplier" type="text" placeholder="请输入" />
         </div>
         <div class="form-item">
           <label>工装供应商：</label>
-          <select v-model="filters.toolSupplier">
-            <option value="">请选择</option>
-            <option value="宁波宝贝电子">宁波宝贝电子</option>
-            <option value="宁海良诚模具有限公司">宁海良诚模具有限公司</option>
-          </select>
+          <input v-model="filters.toolSupplier" type="text" placeholder="请输入" />
         </div>
         <div class="form-item">
           <label>零部件厂：</label>
-          <select v-model="filters.partsFactory">
-            <option value="">请选择</option>
-            <option value="宁波继峰汽车零部件有限公司">宁波继峰汽车零部件有限公司</option>
-          </select>
+          <input v-model="filters.partsFactory" type="text" placeholder="请输入" />
         </div>
         <div class="form-item">
           <label>采购负责人：</label>
-          <select v-model="filters.purchaser">
-            <option value="">请选择</option>
-            <option value="张三">张三</option>
-            <option value="李新宇">李新宇</option>
+          <input v-model="filters.purchaser" type="text" placeholder="请输入" />
+        </div>
+        <div class="form-item">
+          <label>工装使用地：</label>
+          <select v-model="filters.toolUsageLocation">
+            <option v-for="opt in TOOL_USAGE_FILTER_OPTIONS" :key="opt.label" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
       </div>
     </div>
 
-    <div ref="tableCardRef" class="table-card" :style="tableCardStyle">
+    <div
+      v-show="showHProxy"
+      ref="hScrollProxyRef"
+      class="table-h-scroll-proxy scrollbar-like-sidebar"
+      @scroll="onProxyHScroll"
+    >
+      <div class="table-h-scroll-proxy-inner" :style="{ width: `${hProxyInnerWidth}px` }"></div>
+    </div>
+
+    <div class="table-panel">
+      <div ref="tableViewportRef" class="table-scroll-y-outer scrollbar-like-sidebar">
+        <div ref="tableHInnerRef" class="table-h-inner" @scroll="onShellScroll">
       <table class="data-table">
         <thead>
           <tr>
@@ -100,35 +111,47 @@
               />
             </th>
             <th>零件名称</th>
-            <th>零件编号（JF）</th>
+            <th>零件编号</th>
             <th>子零件名称</th>
-            <th>子零件编号（JF）</th>
+            <th>子零件编号</th>
             <th>工装名称</th>
+            <th>工装实物编号</th>
             <th>工装分类</th>
+            <th>供应商</th>
+            <th>工装供应商</th>
+            <th>项目负责人</th>
             <th>供应商模具编号</th>
             <th>客户模具编号</th>
+            <th>零部件厂</th>
+            <th>工装使用地</th>
             <th class="action-col">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr v-if="loading">
-            <td colspan="10" class="empty-row">加载中...</td>
+            <td colspan="16" class="empty-row">加载中...</td>
           </tr>
           <tr v-else-if="!tableData.length">
-            <td colspan="10" class="empty-row">暂无导入数据</td>
+            <td colspan="16" class="empty-row">暂无导入数据</td>
           </tr>
           <tr v-for="row in pagedData" :key="row.id">
             <td class="checkbox-col">
               <input type="checkbox" :checked="selectedIds.includes(row.id)" @change="toggleRowSelection(row.id)" />
             </td>
-            <td>{{ row.partName }}</td>
-            <td>{{ row.partNo }}</td>
-            <td>{{ row.childName }}</td>
-            <td>{{ row.childNo }}</td>
-            <td>{{ row.toolName }}</td>
-            <td>{{ row.toolType }}</td>
-            <td>{{ row.vendorToolNo }}</td>
-            <td>{{ row.customerToolNo }}</td>
+            <td>{{ displayCell(row.partName) }}</td>
+            <td>{{ displayCell(row.partNo) }}</td>
+            <td>{{ displayCell(row.childName) }}</td>
+            <td>{{ displayCell(row.childNo) }}</td>
+            <td>{{ displayCell(row.toolName) }}</td>
+            <td>{{ displayCell(row.realToolNo) }}</td>
+            <td>{{ displayCell(row.toolType) }}</td>
+            <td>{{ displayCell(row.supplier) }}</td>
+            <td>{{ displayCell(row.toolSupplier) }}</td>
+            <td>{{ displayCell(row.owner || row.purchaser) }}</td>
+            <td>{{ displayCell(row.vendorToolNo) }}</td>
+            <td>{{ displayCell(row.customerToolNo) }}</td>
+            <td>{{ displayCell(row.partsFactory) }}</td>
+            <td>{{ formatToolUsageLocationDisplay(row.toolUsageLocation) }}</td>
             <td class="action-col">
               <button class="icon-btn edit" @click="openEditModal('edit', row)">编辑</button>
               <button class="icon-btn delete" @click="openDeleteConfirm(row)">删除</button>
@@ -136,6 +159,8 @@
           </tr>
         </tbody>
       </table>
+        </div>
+      </div>
     </div>
 
     <div ref="tableFooterRef" class="table-footer">
@@ -182,6 +207,35 @@
             <div class="form-item"><label>供应商：</label><input v-model="editForm.supplier" placeholder="请输入" /></div>
             <div class="form-item"><label>工装供应商：</label><input v-model="editForm.toolSupplier" placeholder="请输入" /></div>
             <div class="form-item"><label>项目负责人：</label><input v-model="editForm.owner" placeholder="请输入" /></div>
+            <div class="form-item"><label>供应商模具编号：</label><input v-model="editForm.vendorToolNo" placeholder="请输入" /></div>
+            <div class="form-item"><label>客户模具编号：</label><input v-model="editForm.customerToolNo" placeholder="请输入" /></div>
+            <div class="form-item form-item-span"><label>零部件厂：</label><input v-model="editForm.partsFactory" placeholder="请输入" /></div>
+            <div class="form-item form-item-span location-hint">工装使用地（选择填写，可不选）</div>
+            <div class="form-item">
+              <label>省份：</label>
+              <select v-model="editLocationParts.province" @change="onEditLocationProvinceChange">
+                <option value="">请选择</option>
+                <option v-for="p in CN_PROVINCES" :key="p" :value="p">{{ p }}</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>市：</label>
+              <select v-model="editLocationParts.city" @change="onEditLocationCityChange">
+                <option value="">请选择</option>
+                <option v-for="c in editCityOptions" :key="c" :value="c">{{ c }}</option>
+              </select>
+            </div>
+            <div class="form-item">
+              <label>区/县：</label>
+              <select v-model="editLocationParts.district">
+                <option value="">请选择</option>
+                <option v-for="d in editDistrictOptions" :key="d" :value="d">{{ d }}</option>
+              </select>
+            </div>
+            <div class="form-item form-item-span">
+              <label>详细地址：</label>
+              <input v-model="editLocationParts.detail" type="text" placeholder="可补充街道、门牌等" />
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -199,9 +253,17 @@
         </div>
         <div class="modal-body">
           <label class="upload-panel">
-            <input type="file" class="hidden-input" @change="pickImportFile" />
-            <p class="upload-main">点击上传</p>
-            <p class="upload-sub">JPEG, PNG, PDG, up to 50MB</p>
+            <input
+              :key="importFileKey"
+              type="file"
+              class="hidden-input"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              @change="pickImportFile"
+            />
+            <p class="upload-main">点击选择 Excel</p>
+            <p class="upload-sub">
+              .xlsx / .xls，表头须与「下载模板」完全一致。新零件编号整行入库；已存在的零件编号仅合并更新 Excel 里填写了的列（如供应商、工装供应商、零部件厂、工装使用地等），空单元格不会覆盖库内原值。「工装使用地」可一格内写完整地址，省/市/区间可含空格，导入后解析为与页面、移模一致的存储格式（不写国家前缀）。
+            </p>
             <span class="folder-btn">打开文件夹</span>
           </label>
 
@@ -236,8 +298,86 @@
 
 <script setup>
 /* eslint-disable */
-import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick } from 'vue'
-import { batchDeleteBaseItems, createBaseItem, deleteBaseItem, getBaseItems, updateBaseItem } from '@/api'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, nextTick, watch } from 'vue'
+import { useSyncedHorizontalScrollProxy } from '@/composables/useSyncedHorizontalScrollProxy'
+import {
+  batchDeleteBaseItems,
+  createBaseItem,
+  deleteBaseItem,
+  getBaseItems,
+  importBaseItemsByNewPartNoOnly,
+  updateBaseItem
+} from '@/api'
+import { useAcceptStageComplete } from '@/composables/useAcceptStageComplete'
+import { downloadExcel, timestampedFilename } from '@/utils/excelExport'
+import { parseExcelToRows } from '@/utils/excelImport'
+import {
+  CN_PROVINCES,
+  TOOL_USAGE_FILTER_OPTIONS,
+  citiesOfProvince,
+  districtsOf,
+  composeAddressLine,
+  parseToolUsageLine,
+  formatToolUsageLocationDisplay
+} from '@/utils/chinaRegionSelect'
+
+const { onComplete: onStageComplete, busy: stageCompleteBusy } = useAcceptStageComplete('base')
+
+/** 与模板、导入、导出一致：工装使用地为单列整行；导入时自动解析（省/市/区间可含空格），入库为紧凑串。 */
+const BASE_EXCEL_COLUMNS = [
+  { header: '零件名称', key: 'partName' },
+  { header: '零件编号', key: 'partNo' },
+  { header: '子零件名称', key: 'childName' },
+  { header: '子零件编号', key: 'childNo' },
+  { header: '工装名称', key: 'toolName' },
+  { header: '工装实物编号', key: 'realToolNo' },
+  { header: '工装分类', key: 'toolType' },
+  { header: '供应商', key: 'supplier' },
+  { header: '工装供应商', key: 'toolSupplier' },
+  { header: '项目负责人', key: 'owner', getValue: (r) => r.owner || r.purchaser || '' },
+  { header: '供应商模具编号', key: 'vendorToolNo' },
+  { header: '客户模具编号', key: 'customerToolNo' },
+  { header: '零部件厂', key: 'partsFactory' },
+  {
+    header: '工装使用地',
+    key: 'toolUsageLocation',
+    getValue: (r) => {
+      const raw = String(r?.toolUsageLocation || '').trim()
+      if (!raw) return ''
+      const d = formatToolUsageLocationDisplay(raw)
+      return d === '—' ? '' : d
+    }
+  }
+]
+
+function downloadBaseTemplate() {
+  try {
+    downloadExcel({
+      filename: '基础项录入导入模板.xlsx',
+      sheetName: '基础项录入',
+      columns: BASE_EXCEL_COLUMNS,
+      headersOnly: true
+    })
+  } catch (e) {
+    console.error(e)
+    window.alert('下载模板失败，请稍后重试')
+  }
+}
+
+function exportBaseExcel() {
+  try {
+    downloadExcel({
+      filename: `${timestampedFilename('基础项录入')}.xlsx`,
+      sheetName: '基础项录入',
+      columns: BASE_EXCEL_COLUMNS,
+      rows: tableData.value,
+      headersOnly: false
+    })
+  } catch (e) {
+    console.error(e)
+    window.alert('导出 Excel 失败，请稍后重试')
+  }
+}
 
 const loading = ref(false)
 const tableData = ref([])
@@ -249,12 +389,21 @@ const pagination = reactive({
 })
 const jumpPage = ref(1)
 const pageRootRef = ref(null)
-const tableCardRef = ref(null)
+const tableViewportRef = ref(null)
+const tableHInnerRef = ref(null)
 const tableFooterRef = ref(null)
-const tableCardHeight = ref(260)
 const ROW_HEIGHT = 34
 const TABLE_HEAD_HEIGHT = 42
-const tableCardStyle = computed(() => ({ height: `${tableCardHeight.value}px` }))
+let layoutResizeObserver = null
+
+const {
+  hScrollProxyRef,
+  hProxyInnerWidth,
+  showHProxy,
+  onProxyHScroll,
+  onShellScroll,
+  updateHScrollMetrics
+} = useSyncedHorizontalScrollProxy(tableHInnerRef)
 
 const filters = reactive({
   partName: '',
@@ -268,7 +417,8 @@ const filters = reactive({
   supplier: '',
   toolSupplier: '',
   partsFactory: '',
-  purchaser: ''
+  purchaser: '',
+  toolUsageLocation: ''
 })
 const editModal = reactive({ visible: false, mode: 'create', title: '新建数据', targetId: null })
 const editForm = reactive({
@@ -281,12 +431,36 @@ const editForm = reactive({
   realToolNo: '',
   supplier: '',
   toolSupplier: '',
-  owner: ''
+  owner: '',
+  vendorToolNo: '',
+  customerToolNo: '',
+  partsFactory: ''
 })
+
+const editLocationParts = reactive({
+  province: '',
+  city: '',
+  district: '',
+  detail: ''
+})
+
+const editCityOptions = computed(() => citiesOfProvince(editLocationParts.province))
+const editDistrictOptions = computed(() => districtsOf(editLocationParts.province, editLocationParts.city))
+
+function onEditLocationProvinceChange() {
+  editLocationParts.city = ''
+  editLocationParts.district = ''
+}
+
+function onEditLocationCityChange() {
+  editLocationParts.district = ''
+}
+const importFileKey = ref(0)
+const importPendingFile = ref(null)
 const importModal = reactive({
   visible: false,
   fileName: '',
-  statusText: '上传中...',
+  statusText: '请选择文件',
   progress: 0,
   totalKb: 120,
   percent: 0
@@ -316,31 +490,80 @@ const isAllChecked = computed(() => {
   return pagedData.value.length > 0 && pagedData.value.every((item) => selectedIds.value.includes(item.id))
 })
 
-onMounted(() => {
-  fetchBaseItems()
-  nextTick(updatePageSizeByHeight)
-  window.addEventListener('resize', updatePageSizeByHeight)
+watch(pagedData, () => nextTick(() => updateHScrollMetrics()), { flush: 'post' })
+
+onMounted(async () => {
+  window.addEventListener('resize', onWindowResizeBase)
+  await fetchBaseItems()
+  await nextTick()
+  updatePageSizeByHeight()
+  await nextTick()
+  layoutResizeObserver = new ResizeObserver(() => {
+    nextTick(() => {
+      updatePageSizeByHeight()
+      updateHScrollMetrics()
+    })
+  })
+  if (pageRootRef.value) layoutResizeObserver.observe(pageRootRef.value)
+  if (tableViewportRef.value) layoutResizeObserver.observe(tableViewportRef.value)
+  if (tableHInnerRef.value) layoutResizeObserver.observe(tableHInnerRef.value)
+  await nextTick()
+  updateHScrollMetrics()
 })
 
+function onWindowResizeBase() {
+  updatePageSizeByHeight()
+  updateHScrollMetrics()
+}
+
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', updatePageSizeByHeight)
+  window.removeEventListener('resize', onWindowResizeBase)
+  layoutResizeObserver?.disconnect()
+  layoutResizeObserver = null
 })
+
+function normalizeBaseRow(row) {
+  if (!row || typeof row !== 'object') return row
+  const owner = row.owner || row.purchaser || ''
+  return {
+    ...row,
+    owner,
+    purchaser: row.purchaser || owner,
+    vendorToolNo: row.vendorToolNo != null && row.vendorToolNo !== '' ? row.vendorToolNo : (row.vendor_tool_no || ''),
+    customerToolNo: row.customerToolNo != null && row.customerToolNo !== '' ? row.customerToolNo : (row.customer_tool_no || ''),
+    partsFactory: row.partsFactory != null && row.partsFactory !== '' ? row.partsFactory : (row.parts_factory || ''),
+    toolUsageLocation:
+      row.toolUsageLocation != null && row.toolUsageLocation !== ''
+        ? row.toolUsageLocation
+        : row.tool_usage_location || ''
+  }
+}
+
+function displayCell(val) {
+  const s = val == null ? '' : String(val).trim()
+  return s || '—'
+}
 
 async function fetchBaseItems() {
   loading.value = true
   try {
     const res = await getBaseItems(filters)
-    tableData.value = ensureBaseRows(res.list || [])
-    pagination.total = res.total || tableData.value.length
-    if (pagination.total !== tableData.value.length) pagination.total = tableData.value.length
+    const list = (res.list || []).map(normalizeBaseRow)
+    tableData.value = list
+    pagination.total = res.total != null ? res.total : list.length
     pagination.pageNum = 1
     jumpPage.value = 1
     await nextTick()
     updatePageSizeByHeight()
+    updateHScrollMetrics()
   } catch (error) {
     console.error('获取基础项列表失败:', error)
   } finally {
     loading.value = false
+    nextTick(() => {
+      updatePageSizeByHeight()
+      updateHScrollMetrics()
+    })
   }
 }
 
@@ -371,6 +594,12 @@ function toggleRowSelection(id) {
 function goPage(target) {
   pagination.pageNum = Math.min(Math.max(1, target), totalPages.value)
   jumpPage.value = pagination.pageNum
+  const h = tableHInnerRef.value
+  if (h) h.scrollLeft = 0
+  nextTick(() => {
+    updatePageSizeByHeight()
+    updateHScrollMetrics()
+  })
 }
 
 function submitJumpPage() {
@@ -378,18 +607,13 @@ function submitJumpPage() {
 }
 
 function updatePageSizeByHeight() {
-  if (!tableCardRef.value || !tableFooterRef.value) return
-  const cardRect = tableCardRef.value.getBoundingClientRect()
-  const footerRect = tableFooterRef.value.getBoundingClientRect()
-  const maxHeightByScreen = Math.floor(footerRect.top - cardRect.top - 6)
-  if (maxHeightByScreen > 0) {
-    tableCardHeight.value = maxHeightByScreen
-  }
-  const headEl = tableCardRef.value.querySelector('thead')
-  const sampleRowEl = tableCardRef.value.querySelector('tbody tr:not(.empty-row)')
+  if (!tableViewportRef.value) return
+  const shell = tableViewportRef.value
+  const cardHeight = shell.clientHeight
+  if (cardHeight <= 0) return
+  const headEl = shell.querySelector('thead')
   const headHeight = Math.ceil(headEl?.getBoundingClientRect().height || TABLE_HEAD_HEIGHT)
   const rowHeight = ROW_HEIGHT
-  const cardHeight = tableCardHeight.value || tableCardRef.value.clientHeight || 0
   const availableHeight = Math.max(0, cardHeight - headHeight - 2)
   const rows = Math.max(10, Math.floor(availableHeight / rowHeight) + 1)
   if (rows !== pagination.pageSize) {
@@ -398,68 +622,51 @@ function updatePageSizeByHeight() {
   }
 }
 
-function ensureBaseRows(list) {
-  if (!list.length) return list
-  if (list.length >= 30) return list
-  const seed = [...list]
-  const needCount = 30 - seed.length
-  for (let i = 0; i < needCount; i++) {
-    const origin = list[i % list.length]
-    const suffix = i + 1
-    seed.push({
-      ...origin,
-      id: `demo-base-${origin.id}-${suffix}`,
-      partNo: `${origin.partNo || 'PART'}-${suffix}`,
-      childNo: `${origin.childNo || 'CHILD'}-${suffix}`,
-      realToolNo: `${origin.realToolNo || 'REAL'}-${suffix}`,
-      vendorToolNo: origin.vendorToolNo || '-',
-      customerToolNo: origin.customerToolNo || '-'
-    })
-  }
-  return seed
-}
-
 function openEditModal(mode, row) {
   editModal.mode = mode
   editModal.visible = true
   editModal.targetId = row?.id || null
-  editModal.title = mode === 'batch' ? '批量修改选中行数据' : mode === 'edit' ? '编辑数据' : '新建数据'
+  editModal.title = mode === 'edit' ? '编辑数据' : '新建数据'
 
+  const r = row ? normalizeBaseRow(row) : null
   Object.assign(editForm, {
-    partName: row?.partName || '',
-    partNo: row?.partNo || '',
-    childName: row?.childName || '',
-    childNo: row?.childNo || '',
-    toolName: row?.toolName || '',
-    toolType: row?.toolType || '',
-    realToolNo: row?.realToolNo || '',
-    supplier: row?.supplier || '',
-    toolSupplier: row?.toolSupplier || '',
-    owner: row?.owner || ''
+    partName: r?.partName || '',
+    partNo: r?.partNo || '',
+    childName: r?.childName || '',
+    childNo: r?.childNo || '',
+    toolName: r?.toolName || '',
+    toolType: r?.toolType || '',
+    realToolNo: r?.realToolNo || '',
+    supplier: r?.supplier || '',
+    toolSupplier: r?.toolSupplier || '',
+    owner: r?.owner || r?.purchaser || '',
+    vendorToolNo: r?.vendorToolNo || '',
+    customerToolNo: r?.customerToolNo || '',
+    partsFactory: r?.partsFactory || ''
   })
+  const loc = parseToolUsageLine(r?.toolUsageLocation || '')
+  Object.assign(editLocationParts, loc)
 }
 
 function closeEditModal() {
   editModal.visible = false
 }
 
+function payloadFromEditForm() {
+  return {
+    ...editForm,
+    purchaser: editForm.owner || '',
+    toolUsageLocation: composeAddressLine(editLocationParts)
+  }
+}
+
 async function saveEditData() {
   try {
+    const payload = payloadFromEditForm()
     if (editModal.mode === 'create') {
-      await createBaseItem({
-        ...editForm,
-        vendorToolNo: '-',
-        customerToolNo: '-'
-      })
+      await createBaseItem(payload)
     } else if (editModal.mode === 'edit' && editModal.targetId) {
-      await updateBaseItem(editModal.targetId, {
-        ...editForm,
-        vendorToolNo: '-',
-        customerToolNo: '-'
-      })
-    } else if (editModal.mode === 'batch' && selectedIds.value.length) {
-      // TODO: 后续可改为后端批量更新接口
-      await Promise.all(selectedIds.value.map((id) => updateBaseItem(id, { ...editForm })))
+      await updateBaseItem(editModal.targetId, payload)
     }
     await fetchBaseItems()
   } catch (error) {
@@ -469,36 +676,57 @@ async function saveEditData() {
 }
 
 function openImportModal() {
+  importFileKey.value += 1
+  importPendingFile.value = null
   importModal.visible = true
   importModal.fileName = ''
   importModal.progress = 0
   importModal.percent = 0
-  importModal.statusText = '上传中...'
+  importModal.statusText = '请选择文件'
 }
 
 function closeImportModal() {
   importModal.visible = false
+  importPendingFile.value = null
 }
 
 function pickImportFile(event) {
   const file = event.target.files && event.target.files[0]
   if (!file) return
+  importPendingFile.value = file
   importModal.fileName = file.name
-  importModal.totalKb = 120
-  importModal.progress = 60
-  importModal.percent = 50
+  importModal.statusText = '已选择，点击确认将校验表头'
+  importModal.progress = importModal.totalKb
+  importModal.percent = 100
 }
 
 async function confirmImport() {
-  if (!importModal.fileName) {
+  const file = importPendingFile.value
+  if (!file) {
+    window.alert('请先选择 Excel 文件')
     return
   }
-  importModal.statusText = '上传成功'
-  importModal.progress = importModal.totalKb
-  importModal.percent = 100
-  // TODO: 接后端导入接口，后端返回是否覆盖提示
-  // const res = await api.importBaseItems(file)
-  openConfirm('本次上传会导致覆盖已有数据，是否坚持本次上传？', 'overwrite')
+  const name = file.name.toLowerCase()
+  if (!name.endsWith('.xlsx') && !name.endsWith('.xls')) {
+    window.alert('请选择 .xlsx 或 .xls 文件')
+    return
+  }
+  try {
+    const { rows, error } = await parseExcelToRows(file, BASE_EXCEL_COLUMNS)
+    if (error) {
+      window.alert(error)
+      return
+    }
+    closeImportModal()
+    openConfirm(
+      `将按「零件编号」合并导入（共解析 ${rows.length} 行）：新零件号整行新增；已存在的零件号仅更新 Excel 中有填写（非空）的列，空单元格不会覆盖库内原值（含供应商、工装使用地等）。是否继续？`,
+      'import-merge',
+      { rows }
+    )
+  } catch (e) {
+    console.error(e)
+    window.alert('读取 Excel 失败，请稍后重试')
+  }
 }
 
 function openDeleteConfirm(row) {
@@ -543,10 +771,20 @@ async function confirmAction() {
       console.error('批量删除基础项失败:', error)
     }
   }
-  if (confirmDialog.action === 'overwrite') {
-    // TODO: 对接后端覆盖导入确认接口
-    closeImportModal()
-    fetchBaseItems()
+  if (confirmDialog.action === 'import-merge' && confirmDialog.payload?.rows) {
+    const rows = confirmDialog.payload.rows
+    try {
+      const { added, updated = 0, skipped } = await importBaseItemsByNewPartNoOnly(rows)
+      selectedIds.value = []
+      await fetchBaseItems()
+      window.alert(
+        `导入完成：新增 ${added} 条，合并更新已有行 ${updated} 条，跳过 ${skipped} 条（零件编号为空，或已存在且该行 Excel 全为空列）。`
+      )
+    } catch (error) {
+      console.error('导入写入数据库失败:', error)
+      const msg = error?.message || String(error)
+      window.alert(`导入保存失败：${msg || '请稍后重试'}`)
+    }
   }
   closeConfirm()
 }
@@ -557,28 +795,55 @@ async function confirmAction() {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   background: transparent;
   border: none;
   border-radius: 0;
   padding: 0;
-  padding-bottom: 0;
-  height: calc(100vh - 150px);
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
+  /* 为底部固定分页条留出空间，避免表格滚动区被遮挡 */
+  padding-bottom: 64px;
 }
 
 .toolbar-card,
-.search-card,
-.table-card {
+.search-card {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   background: #fff;
   border: 1px solid #e4ebf4;
   border-radius: 8px;
   padding: 10px 12px;
+  flex-shrink: 0;
 }
 
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 .toolbar-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+  margin-left: auto;
+}
+.btn-complete {
+  background: #23a559;
+  color: #fff;
+  border-color: #1d8f4c;
+}
+.btn-complete:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .btn {
@@ -656,14 +921,51 @@ async function confirmAction() {
   font-size: 12px;
 }
 
-.table-card {
-  padding: 0;
-  overflow-x: auto;
+.table-panel {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 纵向滚动与侧栏样式；横向由内层承担且隐藏原生横条，仅顶部 proxy 可见 */
+.table-scroll-y-outer {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+  background: #fff;
+  border: 1px solid #e4ebf4;
+  border-radius: 8px;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.table-h-inner {
+  overflow-x: auto;
+  overflow-y: visible;
+  min-width: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.table-h-inner::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .data-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 12px;
   color: #4f647f;
@@ -785,6 +1087,25 @@ async function confirmAction() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px 16px;
+}
+
+.edit-grid .form-item label {
+  width: 112px;
+}
+
+.edit-grid .form-item-span {
+  grid-column: 1 / -1;
+}
+
+.edit-grid .location-hint {
+  font-size: 12px;
+  color: #60758e;
+  padding: 2px 0 0 4px;
+}
+
+.edit-grid .form-item input,
+.edit-grid .form-item select {
+  min-width: 0;
 }
 
 .modal-footer {

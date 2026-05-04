@@ -6,7 +6,8 @@
         <select class="select" v-model="filters.role">
           <option value="">全部角色</option>
           <option value="admin">管理员</option>
-          <option value="user">普通用户</option>
+          <option value="user">普通账号</option>
+          <option value="approver">审批账号</option>
         </select>
         <select class="select" v-model="filters.status">
           <option value="">全部状态</option>
@@ -24,23 +25,48 @@
         <thead>
           <tr>
             <th>账号</th>
+            <th>密码</th>
             <th>显示名</th>
             <th>角色</th>
             <th>状态</th>
+            <th>移模审批</th>
             <th>操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading"><td colspan="5" class="center">加载中...</td></tr>
-          <tr v-else-if="!list.length"><td colspan="5" class="center">暂无账号</td></tr>
+          <tr v-if="loading"><td colspan="7" class="center">加载中...</td></tr>
+          <tr v-else-if="!list.length"><td colspan="7" class="center">暂无账号</td></tr>
           <tr v-for="item in list" :key="item.id">
             <td>{{ item.account }}</td>
+            <td class="pwd-cell">{{ item.plainPassword || '—' }}</td>
             <td>{{ item.profile?.displayName || item.account }}</td>
             <td>{{ roleText[item.role] || item.role }}</td>
             <td>
               <span :class="['status', item.status]">{{ statusText[item.status] || item.status }}</span>
             </td>
             <td>
+              <template v-if="item.role === 'approver'">
+                <button
+                  class="link"
+                  type="button"
+                  :disabled="item.status !== 'active'"
+                  @click="toggleMoveApproval(item)"
+                >
+                  {{ item.permissions?.moveApproval ? '关闭权限' : '开通权限' }}
+                </button>
+              </template>
+              <span v-else class="muted">—</span>
+            </td>
+            <td>
+              <button
+                v-if="item.role !== 'admin'"
+                class="link"
+                type="button"
+                :disabled="item.status !== 'active'"
+                @click="openEditRole(item)"
+              >
+                修改权限
+              </button>
               <button class="link" @click="toggleStatus(item)" :disabled="item.role==='admin'">
                 {{ item.status === 'active' ? '禁用' : '启用' }}
               </button>
@@ -51,6 +77,26 @@
       </table>
     </div>
 
+    <div v-if="editVisible" class="modal-mask" @click.self="closeEdit">
+      <div class="modal-card">
+        <h3>修改权限</h3>
+        <p class="modal-sub">账号 <strong>{{ editForm.account }}</strong> · 显示名 {{ editDisplayName }}</p>
+        <p class="modal-hint">可将账号设为「审批账号」以登录后使用移模审批；改回「普通账号」后仅保留验收、移模申请等普通功能。</p>
+        <div class="field">
+          <label>角色</label>
+          <select v-model="editForm.role" class="full-width">
+            <option value="user">普通账号</option>
+            <option value="approver">审批账号（含移模审批权限）</option>
+          </select>
+        </div>
+        <p v-if="editError" class="error">{{ editError }}</p>
+        <div class="actions">
+          <button class="btn btn-primary" type="button" @click="submitEditRole">保存</button>
+          <button class="btn" type="button" @click="closeEdit">取消</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="createVisible" class="modal-mask" @click.self="closeCreate">
       <div class="modal-card">
         <h3>新增账号</h3>
@@ -58,7 +104,8 @@
         <div class="field"><label>密码</label><input v-model="form.password" type="password" placeholder="至少6位" /></div>
         <div class="field"><label>角色</label>
           <select v-model="form.role">
-            <option value="user">普通用户</option>
+            <option value="user">普通账号</option>
+            <option value="approver">审批账号</option>
             <option value="admin">管理员</option>
           </select>
         </div>
@@ -76,11 +123,22 @@
 <script setup>
 /* eslint-disable */
 import { onMounted, reactive, ref } from 'vue'
-import { adminCreateUser, adminResetUserPassword, adminToggleUserStatus, getUserList } from '@/api'
+import {
+  adminCreateUser,
+  adminResetUserPassword,
+  adminSetUserMoveApproval,
+  adminSetUserRole,
+  adminToggleUserStatus,
+  getUserList
+} from '@/api'
 
 const list = ref([])
 const loading = ref(false)
 const createVisible = ref(false)
+const editVisible = ref(false)
+const editError = ref('')
+const editForm = reactive({ account: '', role: 'user' })
+const editDisplayName = ref('')
 const error = ref('')
 const toast = ref('')
 let timer = null
@@ -88,7 +146,7 @@ let timer = null
 const filters = reactive({ keyword: '', role: '', status: '' })
 const form = reactive({ account: '', password: '', role: 'user' })
 
-const roleText = { admin: '管理员', user: '普通用户' }
+const roleText = { admin: '管理员', user: '普通账号', approver: '审批账号' }
 const statusText = { active: '启用', disabled: '禁用' }
 
 const showToast = (text) => {
@@ -129,6 +187,31 @@ const closeCreate = () => {
   createVisible.value = false
 }
 
+const openEditRole = (item) => {
+  if (item.role === 'admin') return
+  if (item.status !== 'active') return
+  editForm.account = item.account
+  editForm.role = item.role === 'approver' ? 'approver' : 'user'
+  editDisplayName.value = item.profile?.displayName || item.account
+  editError.value = ''
+  editVisible.value = true
+}
+
+const closeEdit = () => {
+  editVisible.value = false
+}
+
+const submitEditRole = async () => {
+  const res = await adminSetUserRole({ account: editForm.account, role: editForm.role })
+  if (!res.success) {
+    editError.value = res.message || '保存失败'
+    return
+  }
+  closeEdit()
+  await loadData()
+  showToast(editForm.role === 'approver' ? '已设为审批账号' : '已设为普通账号')
+}
+
 const submitCreate = async () => {
   const res = await adminCreateUser({ ...form })
   if (!res.success) {
@@ -159,6 +242,18 @@ const resetPwd = async (item) => {
   showToast(res.success ? `已重置 ${item.account} 密码为 123456a` : (res.message || '重置失败'))
 }
 
+const toggleMoveApproval = async (item) => {
+  if (item.role !== 'approver') return
+  const next = !item.permissions?.moveApproval
+  const res = await adminSetUserMoveApproval({ account: item.account, moveApproval: next })
+  if (!res.success) {
+    showToast(res.message || '更新失败')
+    return
+  }
+  await loadData()
+  showToast(next ? '已开通移模审批权限' : '已关闭移模审批权限')
+}
+
 onMounted(loadData)
 </script>
 
@@ -180,10 +275,15 @@ onMounted(loadData)
 .link { border: none; background: transparent; color: #2f6bff; cursor: pointer; margin-right: 8px; }
 .modal-mask { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; z-index: 1200; }
 .modal-card { width: 420px; background: #fff; border-radius: 10px; padding: 16px; }
+.modal-sub { margin: 8px 0 0; font-size: 13px; color: #606266; }
+.modal-hint { margin: 10px 0 0; font-size: 12px; color: #909399; line-height: 1.5; }
 .field { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
 .field label { width: 70px; }
 .field input,.field select { flex: 1; height: 32px; border: 1px solid #d5deea; border-radius: 6px; padding: 0 8px; }
+.field select.full-width { flex: 1; width: 100%; }
 .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .error { color: #de5050; font-size: 12px; }
 .toast { position: fixed; right: 24px; bottom: 24px; background: #2f7df7; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 12px; }
+.muted { color: #a0a7b3; font-size: 12px; }
+.pwd-cell { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: #303133; }
 </style>

@@ -1,6 +1,6 @@
 <template>
   <div class="move-manage-page">
-    <component :is="currentSubPage" />
+    <component :is="currentSubPage" :user="user" />
   </div>
 </template>
 
@@ -18,6 +18,10 @@ const props = defineProps({
   activeSubmenu: {
     type: String,
     default: 'move-approval'
+  },
+  user: {
+    type: Object,
+    default: () => ({})
   }
 })
 

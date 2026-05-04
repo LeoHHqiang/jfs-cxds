@@ -13,6 +13,7 @@
         :current-page="currentPageName" 
         :current-icon="currentPageIcon"
         :username="displayUsername"
+        :login-account="account"
         :is-admin="isAdmin"
         @logout="handleLogout"
         @settings-action="handleSettingsAction"
@@ -24,6 +25,7 @@
           :page-name="currentPageName"
           :active-submenu="activeSubmenu"
           :active-submenu-label="currentSubmenuLabel"
+          v-bind="childExtraProps"
         />
       </ContentArea>
     </div>
@@ -32,6 +34,7 @@
       <div class="dialog-card">
         <h3>个人设置</h3>
         <div class="field"><label>账号</label><input :value="account" disabled></div>
+        <div class="field"><label>密码</label><input :value="plainPasswordDisplay || '—'" disabled title="当前库内登录密码（本地 mock 明文）"></div>
         <div class="field"><label>显示名</label><input v-model="personalForm.displayName"></div>
         <div class="field"><label>手机号</label><input v-model="personalForm.phone"></div>
         <div class="field"><label>邮箱</label><input v-model="personalForm.email"></div>
@@ -78,7 +81,9 @@ import RecordPage from './pages/RecordPage.vue'
 import AcceptApprovePage from './pages/AcceptApprovePage.vue'
 import MoveManagePage from './pages/MoveManagePage.vue'
 import AcceptHistoryPage from './pages/AcceptHistoryPage.vue'
-import { changePassword, updateUserInfo } from '@/api'
+import ProcessFlowQueryPage from './pages/ProcessFlowQueryPage.vue'
+import { changePassword, updateUserInfo, getUserPlainPassword } from '@/api'
+import { clearAcceptStageContext } from '@/utils/acceptStageContext'
 
 const emit = defineEmits(['logout'])
 
@@ -92,46 +97,65 @@ const props = defineProps({
 const activeMenu = ref('home')
 const activeSubmenu = ref('')
 
-const menuItems = [
-  { name: '首页', path: 'home', icon: 'fas fa-home' },
-  {
-    name: '验收管理',
-    path: 'accept-approve',
-    icon: 'fas fa-clipboard-check',
-    hasDropdown: true,
-    submenuItems: [
-      { key: 'create', label: '新建验收管理' },
-      { key: 'base', label: '基础项录入' },
-      { key: 'delivery', label: '交付追踪' },
-      { key: 'accept', label: '验收项录入' }
-    ]
-  },
-  {
-    name: '移模管理',
-    path: 'move-approve',
-    icon: 'fas fa-exchange-alt',
-    hasDropdown: true,
-    submenuItems: [
-      { key: 'move-approval', label: '移模审批' },
-      { key: 'move-apply', label: '移模申请' }
-    ]
-  },
-  { name: '模板管理', path: 'template', icon: 'fas fa-cube', adminOnly: true },
-  { name: '历史验收', path: 'accept-history', icon: 'fas fa-history' },
-  { name: '操作记录', path: 'record', icon: 'fas fa-clipboard-list' },
-  { name: '供应商管理', path: 'supplier', icon: 'fas fa-truck', adminOnly: true },
-  { name: '账号管理', path: 'user-manage', icon: 'fas fa-users-cog', adminOnly: true }
-]
+const role = computed(() => props.user?.role || 'user')
+const isAdmin = computed(() => role.value === 'admin')
+const canMoveApprove = computed(() => {
+  if (isAdmin.value) return true
+  if (role.value !== 'approver') return false
+  return props.user?.permissions?.moveApproval === true
+})
 
-const isAdmin = computed(() => (props.user?.role || 'user') === 'admin')
-const visibleMenuItems = computed(() => menuItems.filter((item) => !item.adminOnly || isAdmin.value))
+const childExtraProps = computed(() => {
+  const m = activeMenu.value
+  if (['home', 'move-approve', 'move-apply-only', 'move-approval-only', 'supplier'].includes(m)) {
+    return { user: props.user }
+  }
+  return {}
+})
+
+const menuItems = computed(() => {
+  const items = [
+    { name: '首页', path: 'home', icon: 'fas fa-home' }
+  ]
+  if (role.value === 'admin') {
+    items.push({ name: '流程查询', path: 'flow-query', icon: 'fas fa-search-location' })
+  }
+  if (role.value === 'user' || role.value === 'approver') {
+    items.push({ name: '验收管理', path: 'accept-approve', icon: 'fas fa-clipboard-check' })
+  }
+  if (role.value === 'user') {
+    items.push({ name: '移模申请', path: 'move-apply-only', icon: 'fas fa-file-signature' })
+  } else if (role.value === 'approver' && canMoveApprove.value) {
+    items.push({ name: '移模审批', path: 'move-approval-only', icon: 'fas fa-stamp' })
+  }
+  if (role.value === 'user' || role.value === 'approver') {
+    items.push({ name: '历史验收', path: 'accept-history', icon: 'fas fa-history' })
+  }
+  items.push(
+    { name: '模板管理', path: 'template', icon: 'fas fa-cube', adminOnly: true },
+    { name: '操作记录', path: 'record', icon: 'fas fa-clipboard-list', adminOnly: true },
+    { name: '供应商管理', path: 'supplier', icon: 'fas fa-truck', showForUser: true },
+    { name: '账号管理', path: 'user-manage', icon: 'fas fa-users-cog', adminOnly: true }
+  )
+  return items
+})
+
+const visibleMenuItems = computed(() =>
+  menuItems.value.filter((item) => {
+    if (item.adminOnly) return isAdmin.value
+    if (item.showForUser) return isAdmin.value || role.value === 'user' || role.value === 'approver'
+    return true
+  })
+)
 const allowedMenuPaths = computed(() => visibleMenuItems.value.map((item) => item.path))
 
 const acceptSubmenuItems = [
-  { key: 'create', label: '新建验收管理' },
+  { key: 'create', label: '验收管理' },
+  { key: 'accept-input', label: '验收录入' },
   { key: 'base', label: '基础项录入' },
   { key: 'delivery', label: '交付追踪' },
-  { key: 'accept', label: '验收项录入' }
+  { key: 'accept', label: '验收项录入' },
+  { key: 'mold-archive', label: '模具交付建档' }
 ]
 
 const moveSubmenuItems = [
@@ -139,22 +163,35 @@ const moveSubmenuItems = [
   { key: 'move-apply', label: '移模申请' }
 ]
 
+const acceptValidSubmenuKeys = new Set(['create', 'accept-input', 'base', 'delivery', 'accept', 'mold-archive'])
+const moveValidSubmenuKeys = new Set(['move-approval', 'move-apply'])
+
 const currentSubmenuLabel = computed(() => {
-  const source = activeMenu.value === 'move-approve' ? moveSubmenuItems : acceptSubmenuItems
-  const item = source.find(item => item.key === activeSubmenu.value)
-  return item ? item.label : ''
+  if (activeMenu.value === 'move-approve') {
+    const item = moveSubmenuItems.find((i) => i.key === activeSubmenu.value)
+    return item ? item.label : ''
+  }
+  if (activeMenu.value === 'accept-approve') {
+    const item = acceptSubmenuItems.find((i) => i.key === activeSubmenu.value)
+    return item ? item.label : '验收管理'
+  }
+  return ''
 })
 
 const currentPageName = computed(() => {
-  if (activeMenu.value === 'accept-approve' && currentSubmenuLabel.value) {
+  if (activeMenu.value === 'accept-approve') {
     return currentSubmenuLabel.value
   }
-  const item = visibleMenuItems.value.find(item => item.path === activeMenu.value)
+  if (activeMenu.value === 'move-apply-only') return '移模申请'
+  if (activeMenu.value === 'move-approval-only') return '移模审批'
+  const item = visibleMenuItems.value.find((item) => item.path === activeMenu.value)
   return item ? item.name : '首页'
 })
 
 const currentPageIcon = computed(() => {
-  const item = visibleMenuItems.value.find(item => item.path === activeMenu.value)
+  if (activeMenu.value === 'move-apply-only') return 'fas fa-file-signature'
+  if (activeMenu.value === 'move-approval-only') return 'fas fa-stamp'
+  const item = visibleMenuItems.value.find((item) => item.path === activeMenu.value)
   return item ? item.icon : 'fas fa-home'
 })
 
@@ -163,6 +200,9 @@ const componentMap = {
   home: HomePage,
   'accept-approve': AcceptApprovePage,
   'move-approve': MoveManagePage,
+  'move-apply-only': MoveManagePage,
+  'move-approval-only': MoveManagePage,
+  'flow-query': ProcessFlowQueryPage,
   template: TemplatePage,
   'accept-history': AcceptHistoryPage,
   record: RecordPage,
@@ -176,6 +216,11 @@ const currentComponent = computed(() => {
 
 const account = computed(() => props.user?.account || props.user?.username || '游客')
 const displayUsername = ref(props.user?.profile?.displayName || account.value)
+const plainPasswordDisplay = ref('')
+
+function refreshPlainPassword() {
+  plainPasswordDisplay.value = getUserPlainPassword(account.value)
+}
 
 const dialog = ref('')
 const dialogError = ref('')
@@ -192,6 +237,14 @@ const systemForm = reactive({
 const setActiveMenu = (path) => {
   if (!allowedMenuPaths.value.includes(path)) return
   activeMenu.value = path
+  if (path === 'move-apply-only') {
+    activeSubmenu.value = 'move-apply'
+    return
+  }
+  if (path === 'move-approval-only') {
+    activeSubmenu.value = 'move-approval'
+    return
+  }
   if (path !== 'accept-approve') {
     if (path === 'move-approve') {
       activeSubmenu.value = activeSubmenu.value || 'move-approval'
@@ -200,7 +253,8 @@ const setActiveMenu = (path) => {
     activeSubmenu.value = ''
     return
   }
-  activeSubmenu.value = activeSubmenu.value || 'create'
+  clearAcceptStageContext()
+  activeSubmenu.value = 'create'
 }
 
 const setActiveSubmenu = (payload) => {
@@ -211,10 +265,21 @@ const setActiveSubmenu = (payload) => {
     activeSubmenu.value = payload.subMenu
     return
   }
+  if (activeMenu.value === 'move-apply-only') {
+    activeSubmenu.value = 'move-apply'
+    return
+  }
+  if (activeMenu.value === 'move-approval-only') {
+    activeSubmenu.value = 'move-approval'
+    return
+  }
   activeSubmenu.value = activeMenu.value === 'move-approve' ? 'move-approval' : 'create'
 }
 
 const buildHash = () => {
+  if (activeMenu.value === 'move-apply-only' || activeMenu.value === 'move-approval-only') {
+    return `#/${activeMenu.value}`
+  }
   if (activeSubmenu.value) return `#/${activeMenu.value}/${activeSubmenu.value}`
   return `#/${activeMenu.value}`
 }
@@ -232,8 +297,22 @@ const applyHash = () => {
   const [menu, submenu] = hash.split('/')
   if (!allowedMenuPaths.value.includes(menu)) return
   activeMenu.value = menu
+  if (menu === 'move-apply-only') {
+    activeSubmenu.value = 'move-apply'
+    return
+  }
+  if (menu === 'move-approval-only') {
+    activeSubmenu.value = 'move-approval'
+    return
+  }
   if (submenu) {
-    activeSubmenu.value = submenu
+    if (menu === 'accept-approve' && !acceptValidSubmenuKeys.has(submenu)) {
+      activeSubmenu.value = 'create'
+    } else if (menu === 'move-approve' && !moveValidSubmenuKeys.has(submenu)) {
+      activeSubmenu.value = 'move-approval'
+    } else {
+      activeSubmenu.value = submenu
+    }
     return
   }
   if (menu === 'accept-approve') activeSubmenu.value = 'create'
@@ -248,9 +327,11 @@ const handleLogout = () => {
 const handleSettingsAction = (action) => {
   switch (action) {
     case 'personal':
+      refreshPlainPassword()
       dialog.value = 'personal'
       break
     case 'password':
+      refreshPlainPassword()
       dialog.value = 'password'
       break
     case 'system':
@@ -315,6 +396,7 @@ const savePassword = async () => {
   if (res.success) {
     passwordForm.oldPassword = ''
     passwordForm.newPassword = ''
+    refreshPlainPassword()
     showToast('密码修改成功')
     closeDialog()
   } else {
@@ -359,7 +441,10 @@ watch(
   }
 )
 
+watch(account, refreshPlainPassword, { immediate: true })
+
 onMounted(() => {
+  refreshPlainPassword()
   applyHash()
   window.addEventListener('hashchange', applyHash)
 })
@@ -380,6 +465,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .dialog-mask {

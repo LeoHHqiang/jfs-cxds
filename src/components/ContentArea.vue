@@ -2,7 +2,7 @@
  滚动和卡片式白底样式，
  不承担业务逻辑。 */ -->
 <template>
-  <main class="main-content">
+  <main class="main-content scrollbar-like-sidebar">
     <div class="content-body">
       <slot />
     </div>
@@ -17,10 +17,15 @@
 <style scoped>
 .main-content {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
   background: #f3f6fb;
+  overflow-x: auto;
   overflow-y: auto;
   padding: 10px;
-  height: calc(100vh - 71px);
 }
 
 .content-body {
@@ -28,27 +33,13 @@
   padding: 10px;
   border-radius: 10px;
   border: 1px solid #e4ebf4;
-  display: block;
-  min-height: 100%;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
   position: relative;
-}
-
- 
-/* Scrollbar Styles */
-.main-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.main-content::-webkit-scrollbar-track {
-  background: #ddebf9;
-}
-
-.main-content::-webkit-scrollbar-thumb {
-  background: #96bfe6;
-  border-radius: 4px;
-}
-
-.main-content::-webkit-scrollbar-thumb:hover {
-  background: #79abd8;
+  box-sizing: border-box;
 }
 </style>

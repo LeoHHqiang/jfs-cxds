@@ -5,9 +5,7 @@
       <div class="toolbar-left">
         <h2 class="page-title">{{ pageName }}</h2>
       </div>
-      <div class="toolbar-right">
-        <button class="btn btn-secondary" @click="onExport" :disabled="loading">导出</button>
-      </div>
+      <div class="toolbar-right"></div>
     </div>
 
     <!-- 筛选区（与示例一致的字段） -->
@@ -21,18 +19,18 @@
           <label class="label">负责人：</label>
           <select class="select" v-model="form.owner">
             <option value="">请选择</option>
-            <option v-for="o in owners" :key="o.value" :value="o.value">{{ o.label }}</option>
+            <option v-for="o in ownerOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
           </select>
         </div>
         <div class="form-item">
           <label class="label">项目进度：</label>
-          <input class="input" v-model="form.progress" placeholder="模具交付建档" disabled />
+          <input class="input" v-model="form.progress" placeholder="关键字，留空查全部" />
         </div>
         <div class="form-item">
           <label class="label">相关采购：</label>
           <select class="select" v-model="form.purchase">
             <option value="">请选择</option>
-            <option v-for="p in purchases" :key="p.value" :value="p.value">{{ p.label }}</option>
+            <option v-for="p in purchaseOptions" :key="p.value" :value="p.value">{{ p.label }}</option>
           </select>
         </div>
 
@@ -97,7 +95,7 @@
 <script setup>
 /* eslint-disable */
 import { reactive, ref, computed, onMounted } from 'vue'
-import { fetchAcceptHistory, exportAcceptHistory } from '@/api'
+import { fetchAcceptHistory } from '@/api'
 
 const props = defineProps({
   pageName: {
@@ -109,21 +107,14 @@ const props = defineProps({
 const form = reactive({
   projectCode: '',
   owner: '',
-  progress: '模具交付建档',
+  progress: '',
   purchase: '',
   startDate: '',
   endDate: ''
 })
 
-const owners = [
-  { label: '张三', value: 'u1' },
-  { label: '李四', value: 'u2' }
-]
-
-const purchases = [
-  { label: '采购单A', value: 'p1' },
-  { label: '采购单B', value: 'p2' }
-]
+const ownerOptions = ref([])
+const purchaseOptions = ref([])
 
 const list = ref([])
 const loading = ref(false)
@@ -150,13 +141,13 @@ const loadData = async () => {
     if (res && res.data) {
       list.value = res.data.list || []
       total.value = Number(res.data.total || 0)
+      ownerOptions.value = res.data.ownerOptions || []
+      purchaseOptions.value = res.data.purchaseOptions || []
     } else {
-      // 占位演示数据
-      list.value = [
-        { id: 'h1', acceptTime: '2025-01-03 09:00:00', projectCode: 'P-001', ownerName: '张三', purchaseName: '采购单A', startDate: '2024-07-01', endDate: '2024-12-31', remark: '一次性通过' },
-        { id: 'h2', acceptTime: '2025-01-05 14:20:00', projectCode: 'P-002', ownerName: '李四', purchaseName: '采购单B', startDate: '2024-08-10', endDate: '2025-01-02', remark: '' }
-      ]
-      total.value = 2
+      list.value = []
+      total.value = 0
+      ownerOptions.value = []
+      purchaseOptions.value = []
     }
   } finally {
     loading.value = false
@@ -167,6 +158,7 @@ const onQuery = async () => { page.value = 1; await loadData() }
 const onReset = async () => {
   form.projectCode = ''
   form.owner = ''
+  form.progress = ''
   form.purchase = ''
   form.startDate = ''
   form.endDate = ''
@@ -174,28 +166,12 @@ const onReset = async () => {
 }
 const goPage = async (p) => { page.value = Math.min(Math.max(1, p), totalPages.value); await loadData() }
 
-const onExport = async () => {
-  const res = await exportAcceptHistory(buildQuery())
-  if (res && res.url) {
-    window.open(res.url)
-    return
-  }
-  if (res && res.blob) {
-    const url = URL.createObjectURL(res.blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = '历史验收.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-}
-
 onMounted(loadData)
 </script>
 
 <style scoped>
 .main-content { padding: 16px; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.toolbar { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12px; gap: 12px; }
 .page-title { margin: 0; font-size: 18px; font-weight: 600; }
 .toolbar-right { display: flex; gap: 8px; }
 

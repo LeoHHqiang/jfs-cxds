@@ -14,8 +14,7 @@
           <div class="filter-item">
             <label>维度：</label>
             <select>
-              <option>模块总览</option>
-              <option>审批状态</option>
+              <option>验收与移模</option>
             </select>
           </div>
           <div class="filter-actions">
@@ -23,6 +22,37 @@
           </div>
         </div>
       </div>
+
+      <section v-if="isRegularUser" class="move-panel">
+        <h3 class="move-panel-title">移模审批概览</h3>
+        <div class="move-stats-row">
+          <div class="move-stat-card">
+            <div class="move-stat-label">待审批移模数</div>
+            <div class="move-stat-value">{{ moveStats.pending }}</div>
+          </div>
+          <div class="move-stat-card">
+            <div class="move-stat-label">已审批移模数</div>
+            <div class="move-stat-value">{{ moveStats.approved }}</div>
+          </div>
+          <div class="move-chart-card">
+            <div class="move-chart-title">审批数据趋势</div>
+            <div class="move-chart">
+              <svg v-if="moveChart.points.length" :width="chartWidth" :height="chartHeight">
+                <polyline :points="moveSvgPoints" fill="none" stroke="#6a7dff" stroke-width="2" />
+                <polyline
+                  v-for="(line, idx) in moveChart.extraLines"
+                  :key="idx"
+                  :points="line"
+                  fill="none"
+                  stroke="#7bd6ff"
+                  stroke-width="2"
+                />
+              </svg>
+              <div v-else class="move-chart-empty">暂无图表数据</div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <div class="stats-dashboard">
         <div class="stats-cards">
@@ -33,7 +63,7 @@
         </div>
         <div class="stats-charts">
           <section class="chart-box">
-            <h4>业务数据柱状图</h4>
+            <h4>验收管理与移模申请</h4>
             <div class="bar-chart">
               <div v-for="bar in barChartData" :key="bar.key" class="bar-item">
                 <div class="bar-track">
@@ -45,7 +75,7 @@
             </div>
           </section>
           <section class="chart-box">
-            <h4>业务占比饼图</h4>
+            <h4>移模申请状态占比</h4>
             <div class="pie-wrap">
               <div class="pie-chart" :style="{ background: pieBackground }"></div>
               <ul class="pie-legend">
@@ -64,16 +94,27 @@
 
 <script setup>
 /* eslint-disable */
-import { computed, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { onMounted } from 'vue'
-import { fetchHomeStats } from '@/api'
+import { fetchHomeStats, fetchMoveApproveChart, fetchMoveApproveStats } from '@/api'
 
-defineProps({
+const props = defineProps({
   pageName: {
     type: String,
     default: '首页'
+  },
+  user: {
+    type: Object,
+    default: () => ({})
   }
 })
+
+const isRegularUser = computed(() => (props.user?.role || 'user') === 'user')
+const moveStats = reactive({ pending: 0, approved: 0 })
+const chartWidth = 480
+const chartHeight = 120
+const moveChart = reactive({ points: [], extraLines: [] })
+const moveSvgPoints = computed(() => moveChart.points.map((p) => `${p.x},${p.y}`).join(' '))
 
 const statsCards = ref([])
 const barChartData = ref([])
@@ -95,6 +136,43 @@ const pieBackground = computed(() => {
 
 function quickFilter() {
   loadStats()
+  loadMoveOverview()
+}
+
+function generateMockMoveChart() {
+  const n = 12
+  const baseY = 20
+  moveChart.points = Array.from({ length: n }, (_, i) => ({
+    x: (i / (n - 1)) * chartWidth,
+    y: baseY + 60 - Math.sin(i / 1.5) * 20 - i
+  }))
+  moveChart.extraLines = [
+    Array.from({ length: n }, (_, i) => `${(i / (n - 1)) * chartWidth},${baseY + 70 - Math.cos(i / 1.3) * 18}`).join(' ')
+  ]
+}
+
+async function loadMoveOverview() {
+  if (!isRegularUser.value) return
+  const res = await fetchMoveApproveStats()
+  if (res?.data) {
+    moveStats.pending = Number(res.data.pending ?? 0)
+    moveStats.approved = Number(res.data.approved ?? 0)
+  }
+  const chartRes = await fetchMoveApproveChart({ range: '90d' })
+  if (chartRes?.data?.series?.[0]?.length) {
+    const series = chartRes.data.series[0]
+    const maxX = series.length - 1
+    const maxY = Math.max(...series, 1)
+    moveChart.points = series.map((v, i) => ({
+      x: (i / maxX) * chartWidth,
+      y: chartHeight - (v / maxY) * chartHeight
+    }))
+    moveChart.extraLines = (chartRes.data.series.slice(1) || []).map((arr) =>
+      arr.map((v, i) => `${(i / maxX) * chartWidth},${chartHeight - (v / maxY) * chartHeight}`).join(' ')
+    )
+    return
+  }
+  generateMockMoveChart()
 }
 
 async function loadStats() {
@@ -115,7 +193,18 @@ async function loadStats() {
   }
 }
 
-onMounted(loadStats)
+watch(
+  () => props.user?.role,
+  () => {
+    loadMoveOverview()
+  },
+  { immediate: true }
+)
+
+onMounted(() => {
+  loadStats()
+  loadMoveOverview()
+})
 </script>
 
 <style scoped>
@@ -187,6 +276,75 @@ onMounted(loadStats)
   color: #6f8198;
 }
 
+.move-panel {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e7edf4;
+  padding: 14px 16px;
+}
+
+.move-panel-title {
+  margin: 0 0 12px;
+  font-size: 15px;
+  color: #2c3e50;
+  font-weight: 600;
+}
+
+.move-stats-row {
+  display: grid;
+  grid-template-columns: 200px 200px 1fr;
+  gap: 12px;
+}
+
+.move-stat-card {
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fafcff;
+}
+
+.move-stat-label {
+  color: #606266;
+  font-size: 13px;
+}
+
+.move-stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #2f6bff;
+  margin-top: 6px;
+}
+
+.move-chart-card {
+  border: 1px solid #eef0f3;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.move-chart-title {
+  color: #606266;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.move-chart {
+  height: 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.move-chart-empty {
+  color: #999;
+  font-size: 13px;
+}
+
+@media (max-width: 960px) {
+  .move-stats-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .stats-dashboard {
   display: flex;
   flex-direction: column;
@@ -223,6 +381,10 @@ onMounted(loadStats)
   gap: 12px;
 }
 
+.chart-box {
+  min-width: 0;
+}
+
 .chart-box h4 {
   font-size: 14px;
   color: #42566f;
@@ -230,11 +392,16 @@ onMounted(loadStats)
 }
 
 .bar-chart {
-  height: 220px;
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 10px;
-  align-items: end;
+  min-height: 200px;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: flex-end;
+  align-content: flex-end;
+  gap: 14px 18px;
+  padding: 8px 4px 4px;
+  overflow-x: auto;
 }
 
 .bar-item {

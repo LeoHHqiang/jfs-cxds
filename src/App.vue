@@ -30,7 +30,6 @@ const handleLoginSuccess = (userInfo) => {
 const handleLogout = () => {
   isLoggedIn.value = false
   currentUser.value = null
-  // 清除本地存储的登录信息
   localStorage.removeItem('savedUsername')
   localStorage.removeItem('savedPassword')
   localStorage.removeItem('currentUser')

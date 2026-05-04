@@ -1,233 +1,493 @@
 <template>
-  <main class="main-content">
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-title">待审批移模数</div>
-        <div class="stat-value">{{ stats.pending }}</div>
+  <section class="approval-page">
+    <div class="search-card">
+      <div class="search-actions">
+        <button class="btn btn-primary" @click="loadList">查询</button>
+        <button class="btn btn-light" @click="resetFilters">重置</button>
       </div>
-      <div class="stat-card">
-        <div class="stat-title">已审批移模数</div>
-        <div class="stat-value">{{ stats.approved }}</div>
-      </div>
-      <div class="chart-card">
-        <div class="chart-title">审批数据统计</div>
-        <div class="chart" ref="chartRef">
-          <svg v-if="chartData.points.length" :width="chartWidth" :height="chartHeight">
-            <polyline :points="svgPoints" fill="none" stroke="#6a7dff" stroke-width="2" />
-            <polyline
-              v-for="(line, idx) in chartData.extraLines"
-              :key="idx"
-              :points="line"
-              fill="none"
-              stroke="#7bd6ff"
-              stroke-width="2"
-            />
-          </svg>
-          <div v-else class="chart-empty">暂无图表数据</div>
+      <div class="form-grid">
+        <div class="form-item"><label>零件名称：</label><input v-model="filters.partName" placeholder="请输入" /></div>
+        <div class="form-item"><label>零件编号：</label><input v-model="filters.partNo" placeholder="请输入" /></div>
+        <div class="form-item"><label>工装名称：</label><input v-model="filters.toolName" placeholder="请输入" /></div>
+        <div class="form-item"><label>供应商：</label><input v-model="filters.supplier" placeholder="请输入" /></div>
+        <div class="form-item"><label>新供应商：</label><input v-model="filters.newSupplier" placeholder="请输入" /></div>
+        <div class="form-item">
+          <label>申请状态：</label>
+          <select v-model="filters.status">
+            <option value="">待审批 / 已通过</option>
+            <option value="pending">待审批</option>
+            <option value="approved">已通过</option>
+            <option value="rejected">已驳回</option>
+          </select>
         </div>
       </div>
     </div>
 
-    <div class="toolbar">
-      <div class="tools-left"></div>
-      <div class="tools-right">
-        <button class="btn" @click="onExport">导出Excel</button>
-        <label class="btn file-btn">
-          导入Excel
-          <input type="file" @change="onImport" />
-        </label>
-        <button class="btn btn-ghost" @click="onBatchExport">导出 - 批量通过</button>
-        <button class="btn btn-ghost" @click="openDeleteConfirm">删除</button>
-      </div>
+    <div class="table-card">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>申请单号</th>
+            <th>零件名称</th>
+            <th>零件编号</th>
+            <th>工装名称</th>
+            <th>原供应商</th>
+            <th>新供应商</th>
+            <th>申请人</th>
+            <th>申请时间</th>
+            <th>状态</th>
+            <th class="action-col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="loading">
+            <td colspan="10" class="empty-row">加载中...</td>
+          </tr>
+          <tr v-else-if="!rows.length">
+            <td colspan="10" class="empty-row">暂无待处理数据</td>
+          </tr>
+          <tr v-for="row in rows" :key="row.id">
+            <td>{{ row.applyNo }}</td>
+            <td>{{ row.partName }}</td>
+            <td>{{ row.partNo }}</td>
+            <td>{{ row.toolName }}</td>
+            <td>{{ row.fromSupplier }}</td>
+            <td>{{ row.toSupplier }}</td>
+            <td>{{ row.applicant }}</td>
+            <td>{{ row.applyTime }}</td>
+            <td>
+              <span class="status-tag" :class="row.status">{{ statusText[row.status] || row.status }}</span>
+            </td>
+            <td class="action-col">
+              <button class="link-btn" type="button" @click="openView(row)">查看</button>
+              <template v-if="row.status === 'pending'">
+                <button class="link-btn ok" type="button" @click="onApprove(row)">通过</button>
+                <button class="link-btn danger" type="button" @click="onReject(row)">驳回</button>
+              </template>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
-    <div class="filters-card">
-      <div class="filters-grid">
-        <div class="form-item"><label class="label">零件名称：</label><input class="input" v-model="form.partName" placeholder="请输入" /></div>
-        <div class="form-item"><label class="label">零件编号：</label><input class="input" v-model="form.partCode" placeholder="请输入" /></div>
-        <div class="form-item"><label class="label">子零件名称：</label><input class="input" v-model="form.subPartName" placeholder="请输入" /></div>
-        <div class="form-item"><label class="label">子零件编号：</label><input class="input" v-model="form.subPartCode" placeholder="请输入" /></div>
-        <div class="form-item"><label class="label">工装名称：</label><input class="input" v-model="form.toolName" placeholder="请输入" /></div>
-        <div class="form-item"><label class="label">工装分类：</label><select class="select" v-model="form.category"><option value="">请选择</option><option value="A">A类</option><option value="B">B类</option></select></div>
-        <div class="form-item"><label class="label">供应商模具编号：</label><input class="input" v-model="form.supplierMoldCode" placeholder="请输入" /></div>
-        <div class="form-item"><label class="label">工装实物编号：</label><input class="input" v-model="form.toolPhysicalCode" placeholder="请输入" /></div>
-        <div class="form-item"><label class="label">供应商：</label><select class="select" v-model="form.supplier"><option value="">请选择</option><option value="V1">供应商1</option><option value="V2">供应商2</option></select></div>
-        <div class="form-item"><label class="label">工装供应商：</label><select class="select" v-model="form.toolSupplier"><option value="">请选择</option><option value="TV1">工装供应商1</option><option value="TV2">工装供应商2</option></select></div>
-        <div class="form-item"><label class="label">零部件厂：</label><select class="select" v-model="form.partFactory"><option value="">请选择</option><option value="F1">零部件厂1</option><option value="F2">零部件厂2</option></select></div>
-        <div class="form-item"><label class="label">采购负责人：</label><select class="select" v-model="form.buyer"><option value="">请选择</option><option value="王五">王五</option><option value="赵六">赵六</option></select></div>
-      </div>
-      <div class="filters-actions">
-        <button class="btn btn-primary" @click="onQuery">查询</button>
-        <button class="btn btn-ghost" @click="onReset">重置</button>
-      </div>
-    </div>
-
-    <div v-if="confirm.visible" class="modal-mask" @click.self="closeConfirm">
-      <div class="modal">
-        <div class="modal-header">
-          <span>提示</span>
-          <button class="icon-btn" @click="closeConfirm">✕</button>
+    <div v-if="viewOpen" class="modal-mask" @click.self="viewOpen = false">
+      <div class="modal-sheet">
+        <div class="modal-head">
+          <h3>移模审批 · {{ viewRow?.applyNo }}</h3>
+          <button type="button" class="icon-close" @click="viewOpen = false">✕</button>
         </div>
         <div class="modal-body">
-          <div class="warn-icon">!</div>
-          <div class="modal-text">
-            <div class="title">请注意，此为危险操作，</div>
-            <div class="desc">确定删除选中的移模申请吗？</div>
-          </div>
+          <p v-if="viewRow?.meta?.title" class="meta-line"><strong>标题：</strong>{{ viewRow.meta.title }}</p>
+          <h4>明细（已操作 · 待审批/已通过）</h4>
+          <table class="inner-table">
+            <thead>
+              <tr>
+                <th>零件编号</th>
+                <th>工装名称</th>
+                <th>原所在地</th>
+                <th>移模至</th>
+                <th>行状态</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="d in visibleLines" :key="d.id">
+                <td>{{ d.partNo }}</td>
+                <td>{{ d.toolName }}</td>
+                <td class="wrap">{{ d.fromLocation }}</td>
+                <td class="wrap">{{ d.toLocation }}</td>
+                <td>{{ lineStatusText[d.lineStatus] || d.lineStatus }}</td>
+              </tr>
+              <tr v-if="!visibleLines.length">
+                <td colspan="5" class="muted center">无符合展示的明细</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-primary" @click="confirmDelete">确认</button>
-          <button class="btn" @click="closeConfirm">取消</button>
+        <div class="modal-foot">
+          <button class="btn btn-light" type="button" @click="viewOpen = false">关闭</button>
+          <template v-if="viewRow?.status === 'pending'">
+            <button class="btn btn-primary" type="button" @click="onApprove(viewRow)">通过</button>
+            <button class="btn danger-outline" type="button" @click="onReject(viewRow)">驳回</button>
+          </template>
         </div>
       </div>
     </div>
-  </main>
+
+    <div v-if="toast" class="toast">{{ toast }}</div>
+  </section>
 </template>
 
 <script setup>
 /* eslint-disable */
-import { onMounted, reactive, ref, computed } from 'vue'
-import { fetchMoveApproveStats, fetchMoveApproveChart, exportMoveApprove, importMoveApprove } from '@/api'
+import { computed, onMounted, reactive, ref } from 'vue'
+import {
+  approveMoveApply,
+  fetchMoveApplyList,
+  filterVisibleMoveApplyDetails,
+  rejectMoveApply
+} from '@/api'
 
-defineProps({ pageName: { type: String, default: '移模审批' } })
-
-const stats = reactive({ pending: 1, approved: 1 })
-const chartRef = ref(null)
-const chartWidth = 480
-const chartHeight = 120
-const chartData = reactive({ points: [], extraLines: [] })
-const svgPoints = computed(() => chartData.points.map(p => `${p.x},${p.y}`).join(' '))
-
-const generateMockChart = () => {
-  const n = 12
-  const baseY = 20
-  chartData.points = Array.from({ length: n }, (_, i) => ({ x: (i / (n - 1)) * chartWidth, y: baseY + 60 - Math.sin(i / 1.5) * 20 - i }))
-  chartData.extraLines = [Array.from({ length: n }, (_, i) => `${(i / (n - 1)) * chartWidth},${baseY + 70 - Math.cos(i / 1.3) * 18}`).join(' ')]
-}
-
-const loadStats = async () => {
-  const res = await fetchMoveApproveStats()
-  if (res && res.data) {
-    stats.pending = Number(res.data.pending ?? stats.pending)
-    stats.approved = Number(res.data.approved ?? stats.approved)
+defineProps({
+  user: {
+    type: Object,
+    default: () => ({})
   }
-}
-
-const loadChart = async () => {
-  const res = await fetchMoveApproveChart({ range: '90d' })
-  if (res && res.data && Array.isArray(res.data.series)) {
-    const series = res.data.series[0] || []
-    if (series.length) {
-      const maxX = series.length - 1
-      const maxY = Math.max(...series) || 1
-      chartData.points = series.map((v, i) => ({ x: (i / maxX) * chartWidth, y: chartHeight - (v / maxY) * chartHeight }))
-      chartData.extraLines = (res.data.series.slice(1) || []).map(arr => arr.map((v, i) => `${(i / maxX) * chartWidth},${chartHeight - (v / maxY) * chartHeight}`).join(' '))
-      return
-    }
-  }
-  generateMockChart()
-}
-
-const form = reactive({
-  partName: '',
-  partCode: '',
-  subPartName: '',
-  subPartCode: '',
-  toolName: '',
-  category: '',
-  supplierMoldCode: '',
-  toolPhysicalCode: '',
-  supplier: '',
-  toolSupplier: '',
-  partFactory: '',
-  buyer: ''
 })
 
-const onExport = async () => {
-  const res = await exportMoveApprove({ ...form })
-  if (res && res.url) {
-    window.open(res.url)
+const loading = ref(false)
+const rows = ref([])
+const viewOpen = ref(false)
+const viewRow = ref(null)
+const toast = ref('')
+let toastTimer = null
+
+const filters = reactive({
+  partName: '',
+  partNo: '',
+  toolName: '',
+  supplier: '',
+  newSupplier: '',
+  status: ''
+})
+
+const statusText = {
+  pending: '待审批',
+  approved: '已通过',
+  rejected: '已驳回'
+}
+
+const lineStatusText = {
+  pending: '待审批',
+  approved: '已通过',
+  rejected: '已驳回',
+  draft: '草稿'
+}
+
+const visibleLines = computed(() =>
+  filterVisibleMoveApplyDetails(viewRow.value?.details, viewRow.value?.status)
+)
+
+function showToast(text) {
+  toast.value = text
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    toast.value = ''
+  }, 2000)
+}
+
+async function loadList() {
+  loading.value = true
+  try {
+    const q = { ...filters }
+    if (filters.status === 'rejected') q.includeRejected = true
+    const res = await fetchMoveApplyList(q)
+    rows.value = res?.data?.list || []
+  } finally {
+    loading.value = false
+  }
+}
+
+function resetFilters() {
+  Object.keys(filters).forEach((k) => {
+    filters[k] = ''
+  })
+  loadList()
+}
+
+function openView(row) {
+  viewRow.value = row
+  viewOpen.value = true
+}
+
+async function onApprove(row) {
+  const res = await approveMoveApply({ id: row.id })
+  if (!res.success) {
+    showToast(res.message || '操作失败')
     return
   }
-  if (res && res.blob) {
-    const url = URL.createObjectURL(res.blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = '移模审批.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
+  showToast('已通过')
+  viewOpen.value = false
+  await loadList()
+}
+
+async function onReject(row) {
+  if (!window.confirm(`确定驳回申请「${row.applyNo}」？`)) return
+  const res = await rejectMoveApply({ id: row.id })
+  if (!res.success) {
+    showToast(res.message || '操作失败')
+    return
   }
+  showToast('已驳回')
+  viewOpen.value = false
+  await loadList()
 }
 
-const onImport = async (e) => {
-  const file = e.target.files && e.target.files[0]
-  if (file) await importMoveApprove(file)
-}
-
-const onQuery = () => {
-  alert('已执行查询')
-}
-const onReset = () => {
-  Object.keys(form).forEach(key => {
-    form[key] = ''
-  })
-}
-
-const onBatchExport = () => {
-  alert('已触发批量通过导出')
-}
-
-const confirm = reactive({ visible: false })
-const openDeleteConfirm = () => {
-  confirm.visible = true
-}
-const closeConfirm = () => {
-  confirm.visible = false
-}
-const confirmDelete = () => {
-  alert('已执行删除操作')
-  closeConfirm()
-}
-
-onMounted(async () => {
-  await loadStats()
-  await loadChart()
-})
+onMounted(loadList)
 </script>
 
 <style scoped>
-.main-content { padding: 16px; }
-.stats-row { display: grid; grid-template-columns: 220px 220px 1fr; gap: 12px; }
-.stat-card { background: #fff; border: 1px solid #eef0f3; border-radius: 10px; padding: 12px; }
-.stat-title { color: #606266; }
-.stat-value { font-size: 36px; font-weight: 700; color: #2f6bff; margin-top: 6px; }
-.chart-card { background: #fff; border: 1px solid #eef0f3; border-radius: 10px; padding: 12px; }
-.chart-title { color: #606266; margin-bottom: 6px; }
-.chart { height: 140px; display: flex; align-items: center; justify-content: center; }
-.chart-empty { color: #999; }
+.approval-page {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px;
+}
 
-.toolbar { display: flex; align-items: center; justify-content: space-between; margin: 12px 0; }
-.btn { height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid #dcdfe6; background: #fff; cursor: pointer; }
-.btn-ghost { color: #2f6bff; border-color: #c9dcff; }
-.file-btn { position: relative; overflow: hidden; }
-.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.search-card {
+  background: #fff;
+  border: 1px solid #e4ebf4;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
 
-.filters-card { background: #fff; border: 1px solid #eef0f3; border-radius: 8px; padding: 12px; }
-.filters-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px 16px; }
-.form-item { display: flex; align-items: center; }
-.label { width: 96px; color: #606266; }
-.input, .select { flex: 1; height: 32px; padding: 0 8px; border: 1px solid #dcdfe6; border-radius: 6px; }
-.filters-actions { margin-top: 12px; display: flex; gap: 8px; justify-content: flex-end; }
+.search-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-bottom: 10px;
+}
 
-.modal-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, .35); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-.modal { width: 520px; background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0, 0, 0, .12); overflow: hidden; }
-.modal-header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; font-weight: 600; border-bottom: 1px solid #f0f0f0; }
-.icon-btn { border: none; background: transparent; cursor: pointer; font-size: 16px; }
-.modal-body { display: flex; align-items: center; gap: 16px; padding: 24px 24px 8px; }
-.warn-icon { width: 56px; height: 56px; border-radius: 50%; background: #ffecb3; color: #faad14; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 28px; }
-.modal-text .title { font-weight: 600; margin-bottom: 6px; }
-.modal-text .desc { color: #606266; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 16px 24px 24px; }
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 14px;
+}
 
-@media (max-width: 1200px) { .filters-grid { grid-template-columns: repeat(2, 1fr); } }
+.form-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-item label {
+  width: 82px;
+  color: #60758e;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.form-item input,
+.form-item select {
+  flex: 1;
+  height: 30px;
+  border: 1px solid #dbe4f0;
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.btn {
+  border: 1px solid #d5dfec;
+  background: #fff;
+  color: #536880;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: #2f7df7;
+  color: #fff;
+  border-color: #2f7df7;
+}
+
+.btn-light {
+  background: #f7f9fc;
+}
+
+.danger-outline {
+  border-color: #f0a0a0;
+  color: #c0392b;
+}
+
+.table-card {
+  background: #fff;
+  border: 1px solid #e4ebf4;
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: #4f647f;
+}
+
+.data-table th,
+.data-table td {
+  border-bottom: 1px solid #e8eef6;
+  padding: 9px 8px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.data-table th {
+  background: #f8fbff;
+  font-weight: 600;
+}
+
+.empty-row {
+  text-align: center !important;
+  color: #8a9bb1;
+  padding: 16px !important;
+}
+
+.action-col {
+  width: 140px;
+}
+
+.link-btn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  margin-right: 6px;
+  padding: 0;
+  font-size: 12px;
+  color: #2f7df7;
+}
+
+.link-btn.ok {
+  color: #1b8f4a;
+}
+
+.link-btn.danger {
+  color: #d14b4b;
+}
+
+.status-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  height: 24px;
+  border-radius: 12px;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.status-tag.pending {
+  color: #cc8d14;
+  background: #fff6df;
+}
+
+.status-tag.approved {
+  color: #1b8f4a;
+  background: #e7f8ef;
+}
+
+.status-tag.rejected {
+  color: #d14b4b;
+  background: #ffeaea;
+}
+
+.modal-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+  padding: 16px;
+}
+
+.modal-sheet {
+  width: min(800px, 100%);
+  max-height: 90vh;
+  background: #fff;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e8eef6;
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.icon-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+  color: #8898aa;
+}
+
+.modal-body {
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+
+.meta-line {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: #4f647f;
+}
+
+.modal-body h4 {
+  margin: 12px 0 8px;
+  font-size: 13px;
+  color: #2f7df7;
+}
+
+.inner-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.inner-table th,
+.inner-table td {
+  border: 1px solid #e8eef6;
+  padding: 8px;
+}
+
+.inner-table th {
+  background: #f8fbff;
+}
+
+.wrap {
+  white-space: normal;
+  max-width: 200px;
+}
+
+.muted {
+  color: #8a9bb1;
+}
+
+.center {
+  text-align: center;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #e8eef6;
+}
+
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  background: #2f7df7;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 1400;
+}
 </style>
